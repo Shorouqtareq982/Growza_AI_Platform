@@ -1,7 +1,7 @@
 from fastapi import Depends
-from backend.features.cv_optimization.services.file_vaildator import FileValidator
+from backend.shared.helpers.file_validation import FileValidator
 from backend.shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
-from .parser import Parser
+from .parser import DocumentParser
 from models import optmization_request
 from schemas import ATSAnalysisResponse
 from prompts import CV_ANALYST
@@ -9,10 +9,11 @@ from prompts import CV_ANALYST
 class CVAnalyser:
     def __init__(self, llm: LLMProvider = Depends(create_llm_provider)):
         self.llm = llm
-        self.parser = Parser(llm)
+        self.parser = DocumentParser(llm)
 
+    #TODO: Error handling and logging
     def analyze_cv(self, cv_file, jd_text):
-        isvalid = FileValidator.validate_file(cv_file)
+        isvalid = FileValidator.validate_cv_file(cv_file)
         if not isvalid:
             print("Invalid file provided for CV analysis.")
             return {"error": "Invalid file."}

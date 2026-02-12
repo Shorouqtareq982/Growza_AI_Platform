@@ -58,7 +58,8 @@ logs/
 *.sqlite3
 
 #my gitignore files
-supabase.py
+supabasetest.py
+cloudinarytest.py
 
 # Frontend
 frontend/node_modules/

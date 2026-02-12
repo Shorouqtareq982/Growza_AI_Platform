@@ -11,7 +11,7 @@ from prompts import CV_DATA_EXTRACTOR, JOB_DATA_EXTRACTOR
 from schemas import CVData, JobData
 
 
-class Parser:
+class DocumentParser:
     def __init__(self, llm: LLMProvider = Depends(create_llm_provider)):
         self.llm = llm
 
@@ -79,7 +79,7 @@ class Parser:
             )
 
             # Validate and return the structured data
-            if parsed_content:
+            if not parsed_content:
                 print("LLM returned empty response for CV parsing.")
                 return {}
             
