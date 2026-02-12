@@ -19,7 +19,7 @@ Parse a text-formatted resume efficiently and extract diverse applicant's data i
 <input>
 The following text is the applicant's resume in plain text format:
 
-{resume_text}
+{cv_text}
 </input>
 
 <instructions>

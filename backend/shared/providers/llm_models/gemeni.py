@@ -5,9 +5,10 @@ from google import genai
 from google.genai import types
 import pandas as pd
 from pydantic import BaseModel, Field
+from backend.shared.providers.llm_models.llm_provider import LLMProvider
 from core.config import Settings
 
-class Gemini: 
+class Gemini(LLMProvider): 
     def __init__(self, settings: Settings, system_prompt = None):
         self.settings = settings
         self.client= genai.Client(api_key=settings.GEMINI_API_KEY)

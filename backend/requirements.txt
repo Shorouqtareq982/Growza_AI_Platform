@@ -42,3 +42,8 @@ pytest-cov
 # LLM Providers
 # google-generativeai
 google-genai
+
+# File Parsing 
+pdfplumber
+docx
+pytesseract
