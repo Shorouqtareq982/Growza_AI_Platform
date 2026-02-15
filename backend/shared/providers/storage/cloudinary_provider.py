@@ -110,7 +110,9 @@ class CloudinaryStorageProvider:
             return False 
         
 
-def configure_cloudinary(settings: Settings):
+def configure_cloudinary(settings: Settings = None):
+    if settings is None:
+        settings = get_settings()
     cloudinary.config(
         cloud_name=settings.CLOUDINARY_CLOUD_NAME,
         api_key=settings.CLOUDINARY_API_KEY,
