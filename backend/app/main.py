@@ -89,11 +89,13 @@ def create_application() -> FastAPI:
     # You can add routers from features later
     from features.career_builder.routers.career_router import router as career_router
     app.include_router(career_router, prefix=settings.API_V1_PREFIX)
-
-    from app.api.cv_optmization import router as cv_optmization_router
-    app.include_router(cv_optmization_router, prefix=settings.API_V1_PREFIX)
+    #app.include_router(...)
     
     return app
+
+    #from app.api.cv_optmization import router as cv_optmization_router
+    #app.include_router(cv_optmization_router, prefix=settings.API_V1_PREFIX)
+    #return app
 
 
 app = create_application()

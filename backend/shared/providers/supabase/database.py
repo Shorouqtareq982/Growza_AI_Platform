@@ -711,6 +711,8 @@ class DatabaseProvider:
 # Create a single global instance to be imported across the application
 db = DatabaseProvider()
 
+def get_db():
+    return db
 
 # ============================================================
 # USAGE EXAMPLES
