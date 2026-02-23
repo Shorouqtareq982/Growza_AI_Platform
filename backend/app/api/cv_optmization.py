@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi import Depends, Request
 
 from shared.helpers.file_validation import FileValidator
-from features.cv_optimization.services.text_extractor import TextExtractor
+from shared.helpers.document_parser import DocumentParser
 from features.cv_optimization.services.cv_analyser import CVAnalyser, get_cv_analyser
 from shared.providers.storage.cloudinary_provider import CloudinaryStorageProvider
 router = APIRouter(prefix="/cv_optimization", tags=["Test CV Optimization"])
@@ -23,10 +23,10 @@ async def analyze_cv(
     return analysis_results
 
 
-@router.post("/test/")
+@router.post("/extract/")
 async def test_text_extractor(file: UploadFile):
-    text_extractor = TextExtractor()
-    extracted_content = await text_extractor.extract_text_with_links_no_duplicate(file)
+    document_parser = DocumentParser()
+    extracted_content = await document_parser._extract_text(file)
 
     print("Extracted text:", extracted_content)
     return {"extracted_content": extracted_content}

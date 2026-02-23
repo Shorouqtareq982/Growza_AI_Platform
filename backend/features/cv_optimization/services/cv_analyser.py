@@ -5,7 +5,7 @@ from shared.helpers.file_validation import FileValidator
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from shared.providers.storage.cloudinary_provider import CloudinaryStorageProvider
 from shared.providers.supabase import db
-from .document_parser import DocumentParser
+from shared.helpers.document_parser import DocumentParser
 from ..models import CVOptimizationRequest, JobPosting, CVOptimizationReport
 from ..schemas import ATSAnalysisResponse
 from ..prompts import CV_ANALYST
@@ -15,7 +15,7 @@ TODO:
 [x] Fix UserId to be dynamic and extracted from JWT token instead of hardcoded value.
 [x] Implement authentication and authorization to ensure that only authorized users can access the CV analysis functionality.
 [x] Fix the file url not working
-[ ] Fix extracted urls from CV not being parsed correctly in the analysis.
+[x] Fix extracted urls from CV not being parsed correctly in the analysis.
 [ ] Test the CV analysis process with various CV formats and job descriptions to ensure robustness and accuracy.
 [ ] Add more detailed error messages and logging for debugging and monitoring purposes.
 [ ] Implement try-except blocks around critical operations to catch and log exceptions.
