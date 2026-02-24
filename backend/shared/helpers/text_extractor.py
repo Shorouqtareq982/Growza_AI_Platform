@@ -38,7 +38,7 @@ class TextExtractor:
             if file_name.endswith(".pdf"):
                 text = await TextExtractor._extract_from_pdf(file_obj)
             elif file_name.endswith(".docx"):
-                text = await TextExtractor._extract_from_docx(file_obj)
+                text = TextExtractor._extract_from_docx(file_obj)
             elif file_name.endswith(".txt"):
                 text = TextExtractor._extract_from_txt(file_obj)
             elif file_name.endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff")):
@@ -120,7 +120,7 @@ class TextExtractor:
         return "\n".join(cleaned)
 
     @staticmethod
-    async def _extract_from_docx(file_obj: BinaryIO) -> str:
+    def _extract_from_docx(file_obj: BinaryIO) -> str:
         """Extract text and hyperlinks from DOCX."""
         doc = Document(file_obj)
         final_text = []

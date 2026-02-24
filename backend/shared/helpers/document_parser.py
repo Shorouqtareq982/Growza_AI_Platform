@@ -17,7 +17,7 @@ class DocumentParser:
         self.llm = llm or create_llm_provider()
         self.textExtractor = TextExtractor()
 
-    def _extract_text(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> str:
+    async def _extract_text(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> str:
         """
         Extract text from PDF, DOCX, TXT, or images.
         Automatically falls back to OCR for scanned PDFs/images.
@@ -26,20 +26,20 @@ class DocumentParser:
         text = ""
 
         try:
-            text = TextExtractor.extract_text(file)
+            text = await TextExtractor.extract_text(file)
 
         except Exception as e:
             print(f"Error extracting text: {e}")
 
         return text
 
-    def parse_cv(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> tuple[str,CVData]:
+    async def parse_cv(self, file: Union[str, io.BytesIO, BinaryIO, UploadFile]) -> tuple[str,CVData]:
         """
         Parses a CV file into structured data using LLM.
         Returns a dictionary with extracted information.
         """
         try:
-            text = self._extract_text(file)
+            text = await self._extract_text(file)
             # Send text to LLM for structured extraction
             parsed_content = self.llm.get_response(
                 prompt=CV_DATA_EXTRACTOR.format(cv_text=text),

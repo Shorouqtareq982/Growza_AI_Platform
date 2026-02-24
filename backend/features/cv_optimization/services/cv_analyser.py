@@ -6,6 +6,7 @@ from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_pro
 from shared.providers.storage.cloudinary_provider import CloudinaryStorageProvider
 from shared.providers.supabase import db
 from shared.helpers.document_parser import DocumentParser
+from shared.providers.storage import CloudinaryProvider
 from ..models import CVOptimizationRequest, JobPosting, CVOptimizationReport
 from ..schemas import ATSAnalysisResponse
 from ..prompts import CV_ANALYST
@@ -28,7 +29,7 @@ class CVAnalyser:
     def __init__(self, llm: LLMProvider = None):
         self.llm = llm or create_llm_provider()
         self.parser = DocumentParser(self.llm)
-        self.storage_provider = CloudinaryStorageProvider()
+        self.storage_provider = CloudinaryProvider()
 
     async def analyze_cv(self, user_id: str, cv_file: UploadFile, jd_text: str) -> dict:
         """Main orchestration method for CV analysis."""
@@ -41,7 +42,7 @@ class CVAnalyser:
             
             # Step 3: Save to database
             cv_id, jd_id, request_id = await self._save_parsed_data(
-                user_id, file_url, parsed_cv_text, parsed_cv, parsed_jd
+                user_id, file_url, parsed_cv_text, parsed_cv,jd_text, parsed_jd
             )
             
             # Step 4: Perform analysis
@@ -66,10 +67,9 @@ class CVAnalyser:
         cleaned_filename = FileValidator.clean_filename(cv_file.filename, remove_extension=True)
         
         # Upload file to storage
-        uploaded_file = await self.storage_provider.upload_file(
-            cv_file, cleaned_filename, user_id, fileType="cv"
-        )
-        file_url = uploaded_file.get("secure_url")
+        uploaded_file = self.storage_provider.upload_file(cv_file.file, f"cv_{cleaned_filename}", folder=user_id)
+        file_url = uploaded_file.get("url")
+        
         
         if not file_url:
             raise RuntimeError("Failed to upload CV file to storage.")
@@ -78,20 +78,27 @@ class CVAnalyser:
 
     async def _parse_cv_and_jd(self, cv_file: UploadFile, jd_text: str) -> tuple:
         """Parse CV and job description files."""
-        parsed_cv_text, parsed_cv = self.parser.parse_cv(cv_file)
+        parsed_cv_text, parsed_cv = await self.parser.parse_cv(cv_file)
         parsed_jd = self.parser.parse_job_description(jd_text)
         
         return parsed_cv_text, parsed_cv, parsed_jd
 
     async def _save_parsed_data(
         self, user_id: str, file_url: str, parsed_cv_text: str, 
-        parsed_cv: CVData, parsed_jd: dict
+        parsed_cv: CVData,jd_text:str, parsed_jd: dict
     ) -> tuple:
         """Save CV, JD, and optimization request to database."""
+        # Convert parsed CV to dict if needed
+        parsed_cv_json = (
+            parsed_cv.model_dump(mode="json", exclude_none=True)
+            if isinstance(parsed_cv, CVData)
+            else parsed_cv
+        )
+
         # Save CV and JD metadata
-        created_cv = db.upload_cv(user_id, file_url)
+        created_cv = db.upload_cv(user_id, file_url, parsed_cv_text, parsed_cv_json)
         created_jd = db.save_job_posting(
-            JobPosting(raw_text=parsed_jd, source_type="text").model_dump(
+            JobPosting(raw_text=jd_text, source_type="text", parsed_data=parsed_jd).model_dump(
                 mode="json", exclude_none=True
             )
         )
@@ -101,19 +108,6 @@ class CVAnalyser:
             user_id, created_cv["cv_id"], created_jd["job_id"]
         )
         
-        # Convert parsed CV to dict if needed
-        parsed_cv_json = (
-            parsed_cv.model_dump(mode="json", exclude_none=True)
-            if isinstance(parsed_cv, CVData)
-            else parsed_cv
-        )
-        
-        # Update CV and JD with parsed content
-        db.update_cv(
-            created_cv["cv_id"],
-            {"text_content": parsed_cv_text, "parsed_content": parsed_cv_json}
-        )
-        db.update_job_posting(created_jd["job_id"], {"parsed_data": parsed_jd})
         
         return created_cv["cv_id"], created_jd["job_id"], optimization_request["request_id"]
 
@@ -143,6 +137,8 @@ class CVAnalyser:
         db.save_cv_optimization_report(
             report.model_dump(mode="json", exclude_none=True)
         )
+
+        db.update_optimization_request_status(request_id, "completed")
 
 
 def get_cv_analyser():

@@ -22,18 +22,3 @@ async def analyze_cv(
     analysis_results = await cv_analyser.analyze_cv(userId, cv_file, jd_text)
     return analysis_results
 
-
-@router.post("/extract/")
-async def test_text_extractor(file: UploadFile):
-    document_parser = DocumentParser()
-    extracted_content = await document_parser._extract_text(file)
-
-    print("Extracted text:", extracted_content)
-    return {"extracted_content": extracted_content}
-
-@router.post("/upload/")
-async def upload_cv(file: UploadFile):
-    userId = "test_user_id"  # In a real application, get this from the authenticated user context
-    cleaned_filename = FileValidator.clean_filename(file.filename)
-    response = await CloudinaryStorageProvider().upload_file(file,cleaned_filename, userId,"cv")
-    return {"upload_response": response}

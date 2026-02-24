@@ -11,7 +11,7 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
             try:
-                payload = await self.verify_token(token)
+                payload = self.verify_token(token)
                 request.state.user = payload
             except Exception as e:
                 print(f"Token verification failed: {e}")
@@ -22,7 +22,7 @@ class SupabaseAuthMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         return response
 
-    async def verify_token(self, token: str):
+    def verify_token(self, token: str):
         """Verify and decode JWT token using Supabase's JWT secret."""
         try:
             payload = jwt.decode(
