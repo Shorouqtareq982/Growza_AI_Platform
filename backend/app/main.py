@@ -5,8 +5,9 @@ import sys
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer
 
 # ------------------------------------------------------------
 # 1. Add backend folder to Python path (so imports work)
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_application() -> FastAPI:
+    security = HTTPBearer()
     app = FastAPI(
         title=settings.PROJECT_NAME,
         description="AI-Powered Career Advisor Platform",
@@ -46,6 +48,7 @@ def create_application() -> FastAPI:
         docs_url=f"{settings.API_V1_PREFIX}/docs",
         redoc_url=f"{settings.API_V1_PREFIX}/redoc",
         lifespan=lifespan,
+        dependencies=[Depends(security)]
     )
 
     # CORS middleware

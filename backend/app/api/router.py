@@ -9,9 +9,8 @@ from app.api.cloudinary_service import router as cloudinary_router
 from app.api.cv_optmization import router as cv_optmization_router
 from app.api.user import router as user_router
 
-security = HTTPBearer()
 # Create main API router
-api_router = APIRouter(dependencies=[Depends(security)])
+api_router = APIRouter()
 
 # Include all feature routers
 api_router.include_router(azure_service_router)
