@@ -9,10 +9,8 @@ from dataclasses import dataclass
 import logging
 
 from shared.helpers.document_parser import DocumentParser
-from ..ml_models.skill_extractor import SkillExtractor, LevelDetector
-from ..ml_models.skill_matcher import SkillMatcher
-from ..ml_models.skill_gap import SkillGapAnalyzer, RealismChecker
-from ..repositories.career_repository import CareerRepository
+from features.career_builder.ml_models import SkillExtractor, LevelDetector, SkillMatcher, SkillGapAnalyzer, RealismChecker
+from features.career_builder.repositories.career_repository import CareerRepository
 
 logger = logging.getLogger(__name__)
 

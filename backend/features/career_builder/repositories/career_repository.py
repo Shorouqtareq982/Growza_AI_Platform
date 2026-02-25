@@ -260,7 +260,7 @@ class CareerRepository:
             LEFT JOIN career_plan_content pc ON p.plan_id = pc.plan_id
             WHERE p.user_id = :user_id
             GROUP BY p.plan_id, t.track_name, p.confirmed_level, 
-            p.duration_weeks, p.created_at, p.updated_at
+                     p.duration_weeks, p.created_at, p.updated_at
             ORDER BY p.created_at DESC
         """)
         result = await self.session.execute(query, {"user_id": str(user_id)})
@@ -348,7 +348,7 @@ class CareerRepository:
             JOIN skills s ON us.skill_id = s.skill_id
             JOIN career_plan_info p ON us.plan_id = p.plan_id
             WHERE p.track_id = :track_id
-            AND us.status = 'missing'
+              AND us.status = 'missing'
             GROUP BY s.skill_id, s.skill_name, s.category
             ORDER BY missing_count DESC
             LIMIT 10
