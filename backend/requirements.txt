@@ -36,6 +36,7 @@ python-dateutil
 pytest
 pytest-asyncio
 pytest-cov
+
 pydantic-settings>=2.0.0
 leverparser
 pdfplumber>=0.10.0
@@ -49,4 +50,4 @@ google-genai
 # File Parsing 
 pymupdf-layout
 python-docx
-pytesseract
+google-generativeai>=0.3.0
