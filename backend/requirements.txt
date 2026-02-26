@@ -36,8 +36,10 @@ python-dateutil
 pytest
 pytest-asyncio
 pytest-cov
+
 pydantic-settings>=2.0.0
 leverparser
 pdfplumber>=0.10.0
 pdf2image>=1.16.0
 pytesseract>=0.3.10
+google-generativeai>=0.3.0

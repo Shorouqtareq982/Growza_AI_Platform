@@ -1,13 +1,10 @@
 """
 Backend 1 - Final Router
-Implements exact output contract as specified
 """
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from uuid import UUID
 import logging
-from shared.providers.supabase.database import get_db
 from features.career_builder.repositories.career_repository import CareerRepository
 from features.career_builder.services.career_analysis_service import CareerAnalysisService
 
@@ -20,14 +17,12 @@ router = APIRouter(
 
 
 # =====================================================
-# DEPENDENCY
+# DEPENDENCY - بدون وسيط
 # =====================================================
 
-async def get_analysis_service(
-    db: AsyncSession = Depends(get_db)
-) -> CareerAnalysisService:
+async def get_analysis_service() -> CareerAnalysisService:
     """Get Backend 1 analysis service"""
-    repository = CareerRepository(db)
+    repository = CareerRepository()  # ← بدون وسيط
     return CareerAnalysisService(repository)
 
 
@@ -38,17 +33,7 @@ async def get_analysis_service(
 @router.post(
     "/analyze",
     status_code=status.HTTP_200_OK,
-    summary="🎯 Backend 1 - Complete CV Analysis",
-    description="""
-    **Complete Analysis Pipeline (Backend 1)**
-    
-    Phases:
-    1. ✅ CV Parsing & Skill Extraction (LLM-powered)
-    2. ✅ Level Detection (Hybrid: LLM + Rules)
-    3. ✅ Skill Gap Scoring (Smart gap calculation)
-    4. ✅ Time Realism Logic (Duration validation)
-    5. ✅ Standardized Output Contract (for Backend 2)
-    """
+    summary="🎯 Backend 1 - Complete CV Analysis"
 )
 async def analyze_cv_backend1(
     cv_id: UUID,
