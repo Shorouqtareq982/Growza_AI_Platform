@@ -138,7 +138,7 @@ class CareerAnalysisService:
         all_db_skills = await self._get_all_db_skills()
         
         # Match extracted skills to database
-        matched_skills = self.skill_matcher.match_skills(
+        matched_skills = await self.skill_matcher.match_skills(
             cv_skills=normalized_skills,
             db_skills=all_db_skills,
             threshold=0.65
