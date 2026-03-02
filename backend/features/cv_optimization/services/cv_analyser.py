@@ -1,6 +1,8 @@
+import asyncio
 import logging
 from typing import Optional
 from fastapi import UploadFile, HTTPException, status
+from backend.features.cv_optimization.repositories.cv_optmization_repo import CVOptRepository
 from features.cv_optimization.schemas import JobData, CVData
 from shared.helpers.file_validation import FileValidator
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
@@ -34,6 +36,7 @@ class CVAnalyser:
         self.llm = llm or create_llm_provider()
         self.parser = DocumentParser(self.llm)
         self.storage_provider = CloudinaryProvider()
+        self.repo = CVOptRepository()
 
     async def analyze_cv(self, user_id: str, cv_file: UploadFile, jd_text: Optional[str] = None) -> dict:
         """Main orchestration method for CV analysis."""
@@ -88,7 +91,12 @@ class CVAnalyser:
             
             # Upload file to storage
             logger.debug(f"Uploading CV file to storage for user: {user_id}")
-            uploaded_file = self.storage_provider.upload_file(cv_file.file, f"cv_{cleaned_filename}", folder=user_id)
+            uploaded_file = await asyncio.to_thread(
+                self.storage_provider.upload_file,
+                cv_file.file,
+                f"cv_{cleaned_filename}",
+                folder=user_id
+            )
             file_url = uploaded_file.get("url")
             
             if not file_url:
@@ -119,7 +127,7 @@ class CVAnalyser:
             parsed_jd = None
             if jd_text:
                 logger.debug(f"Parsing job description")
-                parsed_jd = self.parser.parse_job_description(jd_text)
+                parsed_jd = await self.parser.parse_job_description(jd_text)
                 logger.info(f"Job description parsed successfully")
             else:
                 logger.debug(f"No job description provided")
@@ -150,28 +158,21 @@ class CVAnalyser:
 
             # Save CV and JD metadata
             logger.debug(f"Uploading CV to database for user: {user_id}")
-            created_cv = db.upload_cv(user_id, file_url, parsed_cv_text, parsed_cv_json)
-            logger.info(f"CV saved to database with cv_id: {created_cv['cv_id']}")
+            created_cv_id = await self.repo.create_cv_record(user_id, file_url, parsed_cv_text, parsed_cv_json)
+            logger.info(f"CV saved to database with cv_id: {created_cv_id}")
             
             jd_id = None
             if jd_text and parsed_jd:
                 logger.debug(f"Saving job posting to database")
-                created_jd = db.save_job_posting(
-                    JobPosting(raw_text=jd_text, source_type="text", parsed_data=parsed_jd).model_dump(
-                        mode="json", exclude_none=True
-                    )
-                )
-                jd_id = created_jd["job_id"]
+                jd_id = await self.repo.create_jd_record(user_id, parsed_jd)
                 logger.info(f"Job posting saved to database with job_id: {jd_id}")
             
             # Create optimization request
             logger.debug(f"Creating optimization request for user: {user_id}")
-            optimization_request = db.request_cv_optimization(
-                user_id, created_cv["cv_id"], jd_id
-            )
-            logger.info(f"Optimization request created with request_id: {optimization_request['request_id']}")
+            optimization_request = await self.repo.create_optimization_request(user_id, created_cv_id, jd_id)
+            logger.info(f"Optimization request created with request_id: {optimization_request}")
             
-            return created_cv["cv_id"], jd_id, optimization_request["request_id"]
+            return created_cv_id, jd_id, optimization_request
         except HTTPException:
             raise
         except Exception as e:
@@ -222,11 +223,11 @@ class CVAnalyser:
             job_posting_id=jd_id,
             analysis=analysis_results
         )
-        db.save_cv_optimization_report(
+        await self.repo.create_optimization_report(
             report.model_dump(mode="json", exclude_none=True)
         )
 
-        db.update_optimization_request_status(request_id, "completed")
+        await self.repo.update_optimization_request_status(request_id, "completed")
 
 
 def get_cv_analyser():

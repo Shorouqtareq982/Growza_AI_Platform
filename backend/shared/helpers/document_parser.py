@@ -57,7 +57,7 @@ class DocumentParser:
             print(f"Error parsing CV: {e}")
             return text, None
 
-    def parse_job_description(self, jd_text: str) -> JobData:
+    async def parse_job_description(self, jd_text: str) -> JobData:
         """
         Parses a job description text into structured data using LLM.
         Returns a dictionary with extracted information.
