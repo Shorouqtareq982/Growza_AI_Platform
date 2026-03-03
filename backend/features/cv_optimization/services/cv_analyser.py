@@ -58,10 +58,10 @@ class CVAnalyser:
             analysis_results = await self._perform_analysis(parsed_cv, parsed_jd)
             
             # Step 5: Save report
-            await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
+            final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
             
             logger.info(f"CV analysis completed successfully for user: {user_id}, request_id: {request_id}")
-            return analysis_results
+            return final_report
         except HTTPException:
             raise
         except Exception as e:
@@ -221,7 +221,7 @@ class CVAnalyser:
 
     async def _save_optimization_report(
         self, request_id: str, cv_id: str, jd_id: str, analysis_results: dict
-    ) -> None:
+    ) -> dict:
         """Save optimization report to database."""
         report = CVOptimizationReport(
             request_id=request_id,
@@ -229,11 +229,14 @@ class CVAnalyser:
             job_posting_id=jd_id,
             analysis=analysis_results
         )
-        await self.repo.create_optimization_report(
+
+        final_report = await self.repo.create_optimization_report(
             report.model_dump(mode="json", exclude_none=True)
         )
 
         await self.repo.update_optimization_request_status(request_id, "completed")
+
+        return final_report
 
 
 def get_cv_analyser():
