@@ -20,6 +20,9 @@ KEY RULES (see schema for full details):
 - Count only explicit matches (no inference)
 - Normalize case, ignore duplicates when matching
 - Follow JSON structure exactly
+- BE CONSISTENT: When uncertain if terms match, treat as SEPARATE
+- Use strict matching rules defined in schema (see SkillsAnalysis, KeywordAnalysis for exact equivalences)
+- Avoid subjective interpretation - follow the explicit matching rules
 
 ====================================================================
 
@@ -119,6 +122,8 @@ Formulas (see schema for details):
 - Experience_Score = (Matched_Responsibilities / Total_Responsibilities) * 25
 
 Matching rules: explicit matches only, normalize case, remove duplicates, no inference.
+CRITICAL: Use ONLY the strict matching equivalences defined in schema (e.g., Python=python, JS=JavaScript).
+When uncertain if two terms match, treat as SEPARATE to ensure consistent scoring across runs.
 See JobAlignment, SkillsAnalysis, KeywordAnalysis, ExperienceAlignment schemas for complete criteria.
 
 ====================================================================

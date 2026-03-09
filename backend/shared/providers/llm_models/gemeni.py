@@ -30,6 +30,8 @@ class Gemini(LLMProvider):
                 response_schema=schema.model_json_schema() if schema else None,
                 system_instruction=self.system_prompt,
                 top_p = 0.95,  # nucleus sampling to improve output quality
+                # Note: Consider adding seed parameter for reproducibility when needed
+                # seed=42  # Uncomment for deterministic outputs (requires temperature near 0)
             )
 
             response = await asyncio.to_thread(

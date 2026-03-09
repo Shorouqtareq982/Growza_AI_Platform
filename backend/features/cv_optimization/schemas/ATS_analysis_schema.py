@@ -294,7 +294,12 @@ class SkillsAnalysis(BaseModel):
     - Normalize case for comparison (Python = python = PYTHON)
     - Remove duplicates before counting
     - Count only explicit matches (do not infer skills not written)
-    - Match exact terms or close variations (e.g., JavaScript = JS, React.js = React)
+    - Match using these rules (in order of priority):
+      1. Exact match after case normalization (Python = python)
+      2. Common abbreviations: JavaScript=JS, TypeScript=TS
+      3. Framework variations: React.js=React=ReactJS, Node.js=Node=NodeJS
+      4. Version-agnostic: Python3=Python, Java8=Java
+    - When uncertain if terms match, treat as SEPARATE (be conservative to ensure consistency)
     
     SKILL CATEGORIES TO CONSIDER:
     - Technical skills: programming languages, frameworks, libraries
@@ -330,8 +335,12 @@ class ExperienceAlignment(BaseModel):
     - Compare CV experience descriptions with JD responsibilities
     - Look for: similar responsibilities, relevant achievements, related projects
     - Count only explicit matches (do not infer experience not described)
-    - Consider semantic similarity (not just exact word matches)
-    - Evaluate depth of experience (brief mention vs detailed description)
+    - Use keyword-based matching:
+      1. Extract key action verbs + objects from JD (e.g., "designed APIs", "led team")
+      2. Search for same/similar verbs + objects in CV
+      3. Count as match only if BOTH verb and object are present
+    - Avoid subjective "semantic similarity" - use concrete keyword presence
+    - Only count as matched if the responsibility is explicitly described in a CV bullet/description
     
     WHAT TO MATCH:
     - Core responsibilities that overlap with JD requirements
@@ -375,11 +384,14 @@ class KeywordAnalysis(BaseModel):
     
     MATCHING RULES:
     - Normalize case for comparison (AWS = aws)
-    - Match exact terms and common variations
+    - Match using strict criteria:
+      1. Exact match after case normalization
+      2. Acronyms: AWS=Amazon Web Services, API=Application Programming Interface
+      3. Common technical variations: REST=RESTful, CI/CD=Continuous Integration
     - Remove duplicates before counting
     - Count only keywords explicitly present in CV
     - Do not infer keywords not written
-    - Consider context (avoid false positives)
+    - When in doubt whether terms match, count as SEPARATE (prioritize consistency over flexibility)
     
     KEYWORD IMPORTANCE:
     - Prioritize role-specific keywords (highest impact on ATS)
