@@ -59,8 +59,11 @@ class CareerRepository:
         level: str = "beginner"
     ) -> List[Dict[str, Any]]:
         """
-        Get all skills for a given track, including aliases and duration
-        based on the requested level.
+        Get all skills for a given track, including aliases and duration.
+        
+        Note: DB currently has 'required_weeks' only.
+        If beginner_weeks/intermediate_weeks/advanced_weeks are added later,
+        they will be used automatically.
         """
         try:
             result = (
@@ -68,9 +71,7 @@ class CareerRepository:
                 .select("""
                     skill_id,
                     importance_weight,
-                    beginner_weeks,
-                    intermediate_weeks,
-                    advanced_weeks,
+                    required_weeks,
                     is_core,
                     career_skills (
                         skill_id,
@@ -88,13 +89,16 @@ class CareerRepository:
 
             for row in rows:
                 skill_data = row.get("career_skills") or {}
-
-                if level == "advanced":
-                    duration_weeks = row.get("advanced_weeks", 4)
-                elif level == "intermediate":
-                    duration_weeks = row.get("intermediate_weeks", 4)
-                else:
-                    duration_weeks = row.get("beginner_weeks", 4)
+                
+                # Use required_weeks from database
+                # Future: if beginner_weeks/intermediate_weeks/advanced_weeks are added,
+                # selector logic can be enhanced
+                required_weeks = row.get("required_weeks")
+                if not required_weeks or required_weeks <= 0:
+                    logger.warning(
+                        f"Skill {skill_data.get('skill_name')} has invalid required_weeks: {required_weeks}"
+                    )
+                    required_weeks = 4  # Fallback
 
                 aliases = skill_data.get("aliases") or []
                 if not isinstance(aliases, list):
@@ -105,10 +109,9 @@ class CareerRepository:
                     "skill_name": skill_data.get("skill_name"),
                     "category": skill_data.get("category", "General"),
                     "aliases": aliases,
-                    "importance": row.get("importance_weight", 3),
-                    "importance_weight": row.get("importance_weight", 3),
-                    "duration_weeks": duration_weeks,
-                    "is_core": row.get("is_core", True),
+                    "importance_weight": int(row.get("importance_weight", 3) or 3),
+                    "required_weeks": int(required_weeks),
+                    "is_core": bool(row.get("is_core", True)),
                 })
 
             return skills

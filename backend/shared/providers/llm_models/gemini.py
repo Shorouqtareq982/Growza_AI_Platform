@@ -42,9 +42,19 @@ class Gemini(LLMProvider):
         try:
             logger.debug(f"Calling Gemini API with prompt length: {len(prompt)}")
             
+            # For JSON outputs, especially plans, need higher token limits
+            if need_json_output and expecting_longer_output:
+                max_tokens = 16000
+            elif need_json_output:
+                max_tokens = 8000
+            elif expecting_longer_output:
+                max_tokens = 6000
+            else:
+                max_tokens = 2000
+            
             generation_config = types.GenerateContentConfig(
                 temperature=temperature,
-                max_output_tokens=4000 if expecting_longer_output else 2000,
+                max_output_tokens=max_tokens,
                 response_mime_type="application/json" if need_json_output else "text/plain",
                 response_schema=schema.model_json_schema() if schema else None,
                 system_instruction=self.system_prompt
