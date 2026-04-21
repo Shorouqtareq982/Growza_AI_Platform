@@ -7,6 +7,23 @@ analyzer = AnalyzerEngine()
 anonymizer = AnonymizerEngine()
 
 
+def remove_pii_fields(cv_data: dict) -> dict:
+    pii_keys = {
+        "name",
+        "email",
+        "phone",
+        "address",
+        "location",
+        "linkedin",
+        "github",
+        "website",
+    }
+
+    return {
+        k: v for k, v in cv_data.items()
+        if k.lower() not in pii_keys
+    }
+
 # =========================================================
 # Top Region Helper (first N lines)
 # =========================================================

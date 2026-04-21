@@ -53,6 +53,7 @@ google-genai
 python-dateutil
 typing-extensions
 language-tool-python
+nltk
 
 # ===============================
 # PII Masking

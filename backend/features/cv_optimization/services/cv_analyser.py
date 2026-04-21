@@ -5,14 +5,14 @@ import logging
 from typing import Optional
 
 from fastapi import HTTPException, UploadFile, status
-import pymupdf
-from docx import Document
 
+from features.cv_optimization.services.cv_scoring_service import CVScoringService
 from features.cv_optimization.repositories.cv_optmization_repo import CVOptRepository
 from features.cv_optimization.schemas import CVData, JobData
 from shared.helpers.document_parser import DocumentParser
 from shared.helpers.text_extractor import TextExtractor
 from shared.helpers.file_validation import FileValidator
+from shared.helpers.cv_pii_masker import remove_pii_fields
 from shared.providers.llm_models.llm_provider import LLMProvider, create_llm_provider
 from shared.providers.storage import CloudinaryProvider
 
@@ -104,6 +104,9 @@ class CVAnalyser:
             if not cv_record:
                 logger.error(f"CV record not found for cv_id: {cv_id}")
                 raise HTTPException(status_code=404, detail="CV record not found.")
+        
+            # scoring_service = CVScoringService(cv_record['parsed_content'], cv_record['cv_layout_analysis'], jd_record['parsed_data'] if jd_record else None, cv_record['text_content'])
+            # return scoring_service.get_cv_scores()
             
             # Handle different JD scenarios
             if jd_text:
@@ -140,6 +143,7 @@ class CVAnalyser:
             cv_data=cv_record['parsed_content'],
             jd_data=jd_record['parsed_data'],
             cv_layout=cv_record.get('cv_layout_analysis'),
+            cv_text=cv_record.get('text_content'),
             log_context="saved CV with cached JD"
         )
 
@@ -155,6 +159,7 @@ class CVAnalyser:
             cv_data=cv_record['parsed_content'],
             jd_data=parsed_jd,
             cv_layout=cv_record.get('cv_layout_analysis'),
+            cv_text=cv_record.get('text_content'),
             log_context="saved CV with new JD"
         )
 
@@ -168,6 +173,7 @@ class CVAnalyser:
             cv_data=cv_record['parsed_content'],
             jd_data=None,
             cv_layout=cv_record.get('cv_layout_analysis'),
+            cv_text=cv_record.get('text_content'),
             log_context="saved CV without JD",
             no_jd=True
         )
@@ -182,6 +188,7 @@ class CVAnalyser:
             cv_data=cv_record['parsed_content'],
             jd_data=jd_record['parsed_data'],
             cv_layout=cv_record.get('cv_layout_analysis'),
+            cv_text=cv_record.get('text_content'),
             log_context="cached CV and JD"
         )
 
@@ -197,6 +204,7 @@ class CVAnalyser:
             cv_data=cv_record['parsed_content'],
             jd_data=parsed_jd,
             cv_layout=cv_record.get('cv_layout_analysis'),
+            cv_text=cv_record.get('text_content'),
             log_context="cached CV and new JD"
         )
 
@@ -206,7 +214,7 @@ class CVAnalyser:
     ) -> dict:
         """Handle scenario where only JD exists in cache."""
         logger.info(f"Found cached JD (id: {jd_record['job_id']}), parsing new CV")
-        cv_id, cv_data, cv_layout = await self._process_new_cv(
+        cv_id, cv_data, cv_layout, cv_text = await self._process_new_cv(
             user_id, file_url, parse_buf, file_size_kb, content_type, cv_hash
         )
         
@@ -217,6 +225,7 @@ class CVAnalyser:
             cv_data=cv_data,
             jd_data=jd_record['parsed_data'],
             cv_layout=cv_layout,
+            cv_text=cv_text,
             log_context="new CV and cached JD"
         )
 
@@ -240,7 +249,11 @@ class CVAnalyser:
         )
         
         # Perform analysis and save report
-        analysis_results = await self._perform_analysis(parsed_cv, parsed_jd, cv_layout_analysis)
+        analysis_results = await self._perform_analysis(parsed_cv, parsed_jd)
+        scoring_service = CVScoringService(parsed_cv, cv_layout_analysis, parsed_jd, parsed_cv_text)
+        cv_evaluation_scores = scoring_service.get_cv_scores()
+        # Combine analysis results with scoring results
+        analysis_results.update(cv_evaluation_scores)
         final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
         
         logger.info(f"CV analysis completed successfully for user: {user_id}, request_id: {request_id}")
@@ -253,6 +266,7 @@ class CVAnalyser:
     async def _get_or_create_report(
         self, user_id: str, cv_id: str, jd_id: Optional[str],
         cv_data: dict, jd_data: Optional[dict], cv_layout: Optional[dict],
+        cv_text: Optional[str],
         log_context: str, no_jd: bool = False
     ) -> dict:
         """Check for existing report or create new one with analysis."""
@@ -272,7 +286,11 @@ class CVAnalyser:
         # No existing report, perform analysis
         logger.info(f"No existing report found, performing analysis with {log_context}")
         request_id = await self.repo.create_optimization_request(user_id, cv_id, jd_id)
-        analysis_results = await self._perform_analysis(cv_data, jd_data, cv_layout)
+        analysis_results = await self._perform_analysis(cv_data, jd_data)
+        scoring_service = CVScoringService(cv_data, cv_layout, jd_data, cv_text)
+        cv_evaluation_scores =  scoring_service.get_cv_scores()
+        #combine analysis results with scoring results
+        analysis_results.update(cv_evaluation_scores)
         final_report = await self._save_optimization_report(request_id, cv_id, jd_id, analysis_results)
 
         if final_report:
@@ -335,7 +353,7 @@ class CVAnalyser:
     async def _process_new_cv(
         self, user_id: str, file_url: str, parse_buf: io.BytesIO, 
         file_size_kb: float, content_type: str, cv_hash: str
-    ) -> tuple[str, dict, Optional[dict]]:
+    ) -> tuple[str, dict, Optional[dict], str]:
         """Process and save a new CV."""
         parsed_cv_text, parsed_cv, _, cv_layout_analysis = await self._parse_cv_and_jd(
             parse_buf, file_size_kb, content_type, None
@@ -346,7 +364,7 @@ class CVAnalyser:
             cv_layout_analysis, cv_hash, None
         )
         
-        return cv_id, parsed_cv, cv_layout_analysis
+        return cv_id, parsed_cv, cv_layout_analysis, parsed_cv_text
 
     async def _process_new_jd(self, jd_text: Optional[str], jd_hash: Optional[str]) -> tuple[Optional[dict], Optional[str]]:
         """Process and save a new JD."""
@@ -571,18 +589,21 @@ class CVAnalyser:
     # ANALYSIS
     # ========================
 
-    async def _perform_analysis(self, parsed_cv: dict, parsed_jd: Optional[dict], cv_layout_analysis: Optional[dict]) -> dict:
+    async def _perform_analysis(self, parsed_cv: dict, parsed_jd: Optional[dict]) -> dict:
         """Perform ATS analysis using LLM."""
         try:
             logger.debug("Preparing analysis prompt")
             job_description = parsed_jd if parsed_jd else "No job description provided"
-            cv_layout_analysis = cv_layout_analysis if cv_layout_analysis else {"message": "No layout analysis available"}
-            
+
+            # Remove PII fields from parsed CV
+            parsed_cv = remove_pii_fields(parsed_cv)
+
             logger.debug("Sending request to LLM for CV analysis")
             results = await self.llm.get_response(
-                prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description, cv_layout_analysis=cv_layout_analysis),
+                prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description),
                 need_json_output=True,
-                schema=ATSAnalysisResponse
+                schema=ATSAnalysisResponse,
+                temperature=0.1
             )
 
             if not results:

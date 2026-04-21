@@ -52,8 +52,8 @@ class DocumentParser:
                 print("No text extracted from CV.")
                 return "", {}
 
-            masked_text, parsed_content = await self.parse_cv_text(text, mask_pii=mask_pii)
-            return text if not return_masked_text else masked_text, parsed_content
+            parsed_content = await self.parse_cv_text(text, mask_pii=mask_pii)
+            return text , parsed_content
 
         except Exception as e:
             print(f"Error parsing CV: {e}")
@@ -71,6 +71,7 @@ class DocumentParser:
             text_to_process, mask_map = self._prepare_text(cv_text, mask_pii)
 
             parsed = await self._call_llm(text_to_process)
+            
             parsed_dict = self._normalize_llm_output(parsed)
 
             if not parsed_dict:
@@ -79,7 +80,7 @@ class DocumentParser:
             if mask_pii and mask_map:
                 parsed_dict = self._unmask_parsed_output(parsed_dict, mask_map)
 
-            return text_to_process, parsed_dict
+            return parsed_dict
 
         except Exception as e:
             print(f"Error parsing CV text: {e}")
