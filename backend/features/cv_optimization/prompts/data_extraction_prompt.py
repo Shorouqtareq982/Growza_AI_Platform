@@ -7,7 +7,7 @@ Identify the key details from a job description and company overview to create a
 {job_description}
 </job_description>
 
-Note: The "keywords", "job_duties_and_responsibilities", and "required_qualifications" sections are particularly important for resume tailoring. Ensure these are as comprehensive and accurate as possible.
+Note: The "keywords", "job_duties_and_responsibilities", and "skills" sections are particularly important for cv optimization. Ensure these are as comprehensive and accurate as possible.
 
 """
 
@@ -22,6 +22,19 @@ The following text is the applicant's resume in plain text format:
 
 {cv_text}
 </input>
+
+<critical_instruction>
+PRESERVE MASKED TOKENS EXACTLY:
+If you see tokens in the format <LABEL_NUMBER> (e.g., <PERSON_0>, <EMAIL_ADDRESS_1>), 
+you MUST preserve them EXACTLY as they appear in the input text. Do NOT:
+- Remove angle brackets
+- Change capitalization
+- Add spaces around or inside tokens
+- Split tokens across lines
+- Modify the token in any way
+
+Keep these tokens unchanged in your output so they can be properly restored later.
+</critical_instruction>
 
 <instructions>
 Follow these steps carefully to extract and structure the resume information:

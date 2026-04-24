@@ -1,129 +1,282 @@
-"""
-Career Planning Repository
-Database operations layer using Supabase DatabaseProvider
-✅ FIXED: All table names corrected
-"""
-from typing import List, Optional, Dict, Any
-from uuid import UUID
 import logging
-from shared.providers.supabase.database import db
+from uuid import UUID
+from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
 
 class CareerRepository:
-    """Repository for career planning database operations using Supabase"""
+    def __init__(self, db_provider):
+        self.client = db_provider.client
+        logger.debug("CareerRepository initialized")
 
     # =====================================================
     # TRACKS
     # =====================================================
-    
-    async def get_all_tracks(self) -> List[Dict[str, Any]]:
-        """Get all career tracks"""
-        try:
-            return db.read("career_tracks", limit=100)
-        except Exception as e:
-            logger.error(f"Error getting tracks: {e}")
-            return []
 
     async def get_track_by_id(self, track_id: int) -> Optional[Dict[str, Any]]:
-        """Get track details by ID"""
         try:
-            tracks = db.read("career_tracks", {"track_id": track_id}, limit=1)
-            return tracks[0] if tracks else None
+            result = (
+                self.client.table("career_tracks")
+                .select("*")
+                .eq("track_id", track_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
         except Exception as e:
-            logger.error(f"Error getting track {track_id}: {e}")
-            return None
+            logger.error(f"Error getting track by id: {e}", exc_info=True)
+            raise
 
-    # =====================================================
-    # SKILLS
-    # =====================================================
-    
+    async def get_all_tracks(self) -> List[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("career_tracks")
+                .select("*")
+                .order("track_name")
+                .execute()
+            )
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"Error getting all tracks: {e}", exc_info=True)
+            raise
+
+    async def search_skills_by_name(self, query: str) -> List[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("career_skills")
+                .select("*")
+                .ilike("skill_name", f"%{query}%")
+                .execute()
+            )
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"Error searching skills: {e}", exc_info=True)
+            raise
+
     async def get_skills_by_track(
-        self, 
-        track_id: int, 
-        level: str = 'beginner'
+        self,
+        track_id: int,
+        level: str = "beginner"
     ) -> List[Dict[str, Any]]:
-        """Get all skills for a track"""
         try:
-            # Get track_skills (junction table)
-            track_skills = db.read("track_skills", {"track_id": track_id})
-            
-            if not track_skills:
-                return []
-            
-            # Get full skill details
-            skill_ids = [ts['skill_id'] for ts in track_skills]
-            all_skills = []
-            
-            for skill_id in skill_ids:
-                skill = await self.get_skill_by_id(skill_id)
-                if skill:
-                    # Add track-specific metadata
-                    track_skill_meta = next(
-                        (ts for ts in track_skills if ts['skill_id'] == skill_id),
-                        {}
+            result = (
+                self.client.table("track_skills")
+                .select("""
+                    skill_id,
+                    importance_weight,
+                    required_weeks,
+                    is_core,
+                    career_skills (
+                        skill_id,
+                        skill_name,
+                        category,
+                        aliases
                     )
-                    skill.update({
-                        'importance': track_skill_meta.get('importance', 3),
-                        'duration_weeks': track_skill_meta.get('duration_weeks', 4)
-                    })
-                    all_skills.append(skill)
-            
-            return all_skills
-            
-        except Exception as e:
-            logger.error(f"Error getting skills for track {track_id}: {e}")
-            return []
+                """)
+                .eq("track_id", track_id)
+                .execute()
+            )
 
-    async def get_skill_by_id(self, skill_id: int) -> Optional[Dict[str, Any]]:
-        """Get skill details by ID"""
-        try:
-            skills = db.read("career_skills", {"skill_id": skill_id}, limit=1)
-            return skills[0] if skills else None
-        except Exception as e:
-            logger.error(f"Error getting skill {skill_id}: {e}")
-            return None
+            rows = result.data if result.data else []
+            skills = []
 
-    async def search_skills_by_name(self, search_term: str = '') -> List[Dict[str, Any]]:
-        """Search skills by name"""
-        try:
-            all_skills = db.read("career_skills", limit=1000)
-            
-            if not search_term:
-                return all_skills
-            
-            return [
-                s for s in all_skills
-                if search_term.lower() in s.get('skill_name', '').lower()
-            ]
-        except Exception as e:
-            logger.error(f"Error searching skills: {e}")
-            return []
+            for row in rows:
+                skill_data = row.get("career_skills") or {}
 
-    async def get_popular_skills(self) -> List[Dict[str, Any]]:
-        """Get skills that appear in multiple tracks"""
-        # TODO: Implement with proper aggregation
-        return []
+                required_weeks = row.get("required_weeks")
+                if not required_weeks or required_weeks <= 0:
+                    logger.warning(
+                        f"Skill {skill_data.get('skill_name')} has invalid required_weeks: {required_weeks}"
+                    )
+                    required_weeks = 4
+
+                aliases = skill_data.get("aliases") or []
+                if not isinstance(aliases, list):
+                    aliases = []
+
+                skills.append({
+                    "skill_id": skill_data.get("skill_id") or row.get("skill_id"),
+                    "skill_name": skill_data.get("skill_name"),
+                    "category": skill_data.get("category", "General"),
+                    "aliases": aliases,
+                    "importance_weight": int(row.get("importance_weight", 3) or 3),
+                    "required_weeks": int(required_weeks),
+                    "is_core": bool(row.get("is_core", True)),
+                })
+
+            return skills
+
+        except Exception as e:
+            logger.error(f"Error getting skills by track: {e}", exc_info=True)
+            raise
 
     # =====================================================
-    # CV & USER DATA
+    # CV
     # =====================================================
-    
+
+    async def save_cv(
+        self,
+        file_url: str,
+        text_content: str,
+        parsed_content: dict,
+        user_id: Optional[UUID] = None
+    ) -> Optional[UUID]:
+        try:
+            data = {
+                "file_url": file_url,
+                "text_content": text_content,
+                "parsed_content": parsed_content
+            }
+
+            if user_id:
+                data["user_id"] = str(user_id)
+
+            result = self.client.table("cv").insert(data).execute()
+            return UUID(result.data[0]["cv_id"]) if result.data else None
+
+        except Exception as e:
+            logger.error(f"Error saving CV: {e}", exc_info=True)
+            raise
+
     async def get_cv_by_id(self, cv_id: UUID) -> Optional[Dict[str, Any]]:
-        """Get CV details"""
         try:
-            cvs = db.read("cv", {"cv_id": str(cv_id)}, limit=1)
-            return cvs[0] if cvs else None
+            result = (
+                self.client.table("cv")
+                .select("*")
+                .eq("cv_id", str(cv_id))
+                .execute()
+            )
+            return result.data[0] if result.data else None
         except Exception as e:
-            logger.error(f"Error getting CV {cv_id}: {e}")
-            return None
+            logger.error(f"Error getting CV by id: {e}", exc_info=True)
+            raise
+
+    async def get_user_cvs(self, user_id: UUID) -> List[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("cv")
+                .select("*")
+                .eq("user_id", str(user_id))
+                .execute()
+            )
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"Error getting user CVs: {e}", exc_info=True)
+            raise
 
     # =====================================================
-    # CAREER PLANS
+    # ANALYSIS CACHE
     # =====================================================
-    
-    async def create_career_plan(
+
+    async def save_analysis_cache(
+        self,
+        cv_id: UUID,
+        track_id: int,
+        analysis_data: dict,
+        state_version: Optional[int] = None
+    ) -> None:
+        try:
+            existing = (
+                self.client.table("analysis_cache")
+                .select("*")
+                .eq("cv_id", str(cv_id))
+                .eq("track_id", track_id)
+                .execute()
+            )
+
+            if existing.data:
+                current = existing.data[0]
+                previous_version = int(current.get("state_version") or 1)
+                next_version = state_version if state_version is not None else previous_version + 1
+
+                (
+                    self.client.table("analysis_cache")
+                    .update({
+                        "analysis_data": analysis_data,
+                        "state_version": next_version,
+                    })
+                    .eq("cv_id", str(cv_id))
+                    .eq("track_id", track_id)
+                    .execute()
+                )
+            else:
+                payload = {
+                    "cv_id": str(cv_id),
+                    "track_id": track_id,
+                    "analysis_data": analysis_data,
+                    "state_version": state_version or 1,
+                }
+                self.client.table("analysis_cache").insert(payload).execute()
+
+        except Exception as e:
+            logger.error(f"Error saving analysis cache: {e}", exc_info=True)
+            raise
+
+    async def get_analysis_cache(
+        self,
+        cv_id: UUID,
+        track_id: int
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("analysis_cache")
+                .select("*")
+                .eq("cv_id", str(cv_id))
+                .eq("track_id", track_id)
+                .execute()
+            )
+
+            if result.data:
+                raw = result.data[0].get("analysis_data")
+                if isinstance(raw, dict):
+                    return raw
+                if isinstance(raw, str):
+                    import json
+                    return json.loads(raw)
+                return None
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting analysis cache: {e}", exc_info=True)
+            raise
+
+    async def get_analysis_cache_record(
+        self,
+        cv_id: UUID,
+        track_id: int
+    ) -> Optional[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("analysis_cache")
+                .select("*")
+                .eq("cv_id", str(cv_id))
+                .eq("track_id", track_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            logger.error(f"Error getting analysis cache record: {e}", exc_info=True)
+            raise
+
+    async def delete_analysis_cache(self, cv_id: UUID, track_id: int) -> None:
+        try:
+            (
+                self.client.table("analysis_cache")
+                .delete()
+                .eq("cv_id", str(cv_id))
+                .eq("track_id", track_id)
+                .execute()
+            )
+        except Exception as e:
+            logger.error(f"Error deleting analysis cache: {e}", exc_info=True)
+            raise
+
+    # =====================================================
+    # PLAN PERSISTENCE
+    # =====================================================
+
+    async def create_plan(
         self,
         user_id: UUID,
         cv_id: UUID,
@@ -131,156 +284,524 @@ class CareerRepository:
         detected_level: str,
         confirmed_level: str,
         duration_weeks: int,
-        suggested_min_weeks: int,
-        realism_flag: bool
+        realism_flag: bool = False,
+        suggested_min_weeks: Optional[int] = None
     ) -> Optional[int]:
-        """Create a new career plan and return plan_id"""
         try:
-            plan_data = {
+            payload = {
                 "user_id": str(user_id),
                 "cv_id": str(cv_id),
                 "track_id": track_id,
                 "detected_level": detected_level,
                 "confirmed_level": confirmed_level,
                 "duration_weeks": duration_weeks,
+                "realism_flag": realism_flag,
+                "suggested_min_weeks": suggested_min_weeks
+            }
+
+            result = (
+                self.client.table("career_plan_info")
+                .insert(payload)
+                .execute()
+            )
+
+            return result.data[0]["plan_id"] if result.data else None
+
+        except Exception as e:
+            logger.error(f"Error creating plan: {e}", exc_info=True)
+            raise
+
+    async def upsert_plan_info(
+        self,
+        *,
+        user_id: UUID,
+        cv_id: UUID,
+        track_id: int,
+        detected_level: str,
+        confirmed_level: str,
+        duration_weeks: int,
+        realism_flag: bool = False,
+        suggested_min_weeks: Optional[int] = None,
+        available_hours_per_week: Optional[int] = None,
+        requested_weeks: Optional[int] = None,
+        realism_zone: Optional[str] = None,
+        confirmed_learning_targets: Optional[List[Dict[str, Any]]] = None,
+        detected_skill_levels: Optional[Dict[str, Any]] = None,
+        selected_skill_ids: Optional[List[int]] = None,
+        generation_mode: Optional[str] = None,
+        state_version: int = 1,
+    ) -> Optional[int]:
+        try:
+            existing = (
+                self.client.table("career_plan_info")
+                .select("*")
+                .eq("user_id", str(user_id))
+                .eq("cv_id", str(cv_id))
+                .eq("track_id", track_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            payload = {
+                "user_id": str(user_id),
+                "cv_id": str(cv_id),
+                "track_id": track_id,
+                "detected_level": detected_level,
+                "confirmed_level": confirmed_level,
+                "duration_weeks": duration_weeks,
+                "realism_flag": realism_flag,
                 "suggested_min_weeks": suggested_min_weeks,
-                "realism_flag": realism_flag
+                "available_hours_per_week": available_hours_per_week,
+                "requested_weeks": requested_weeks,
+                "realism_zone": realism_zone,
+                "confirmed_learning_targets": confirmed_learning_targets or [],
+                "detected_skill_levels": detected_skill_levels or {},
+                "selected_skill_ids": selected_skill_ids or [],
+                "generation_mode": generation_mode,
+                "state_version": state_version,
             }
-            result = db.create("career_plan_info", plan_data)
-            return result.get("plan_id") if result else None
-        except Exception as e:
-            logger.error(f"Error creating plan: {e}")
-            return None
 
-    async def add_user_skill_gap(
+            if existing.data:
+                plan_id = existing.data[0]["plan_id"]
+                (
+                    self.client.table("career_plan_info")
+                    .update(payload)
+                    .eq("plan_id", plan_id)
+                    .execute()
+                )
+                return plan_id
+
+            result = (
+                self.client.table("career_plan_info")
+                .insert(payload)
+                .execute()
+            )
+            return result.data[0]["plan_id"] if result.data else None
+
+        except Exception as e:
+            logger.error(f"Error upserting plan info: {e}", exc_info=True)
+            raise
+
+    async def replace_plan_user_skills(
         self,
         plan_id: int,
-        skill_id: int,
-        status: str,
-        current_level: str,
-        required_level: str,
-        gap_score: float
-    ) -> Optional[Dict]:
-        """Add skill gap for user"""
+        skills_data: List[Dict[str, Any]]
+    ) -> None:
         try:
-            data = {
-                "plan_id": plan_id,
-                "skill_id": skill_id,
-                "status": status,
-                "current_level": current_level,
-                "required_level": required_level,
-                "gap_score": gap_score
-            }
-            return db.create("career_user_skills", data)
-        except Exception as e:
-            logger.error(f"Error adding skill gap: {e}")
-            return None
+            (
+                self.client.table("career_user_skills")
+                .delete()
+                .eq("plan_id", plan_id)
+                .execute()
+            )
 
-    async def add_weekly_content(
+            if not skills_data:
+                return
+
+            self.client.table("career_user_skills").insert(skills_data).execute()
+
+        except Exception as e:
+            logger.error(f"Error replacing plan user skills: {e}", exc_info=True)
+            raise
+
+    async def replace_plan_content(
         self,
         plan_id: int,
-        week_number: int,
-        skill_id: int,
-        topic: str,
-        description: str,
-        resources: List[str]
-    ) -> Optional[Dict]:
-        """Add weekly content to plan"""
+        weekly_data: List[Dict[str, Any]]
+    ) -> None:
         try:
-            data = {
-                "plan_id": plan_id,
-                "week_number": week_number,
-                "skill_id": skill_id,
-                "topic": topic,
-                "description": description,
-                "resources": resources
-            }
-            return db.create("career_plan_content", data)
+            (
+                self.client.table("career_plan_content")
+                .delete()
+                .eq("plan_id", plan_id)
+                .execute()
+            )
+
+            if not weekly_data:
+                return
+
+            self.client.table("career_plan_content").insert(weekly_data).execute()
+
         except Exception as e:
-            logger.error(f"Error adding weekly content: {e}")
-            return None
+            logger.error(f"Error replacing plan content: {e}", exc_info=True)
+            raise
+
+    async def insert_plan_content(self, weekly_data: List[Dict[str, Any]]) -> None:
+        try:
+            if not weekly_data:
+                return
+            self.client.table("career_plan_content").insert(weekly_data).execute()
+        except Exception as e:
+            logger.error(f"Error inserting plan content: {e}", exc_info=True)
+            raise
+
+    async def insert_user_skills(self, skills_data: List[Dict[str, Any]]) -> None:
+        try:
+            if not skills_data:
+                return
+            self.client.table("career_user_skills").insert(skills_data).execute()
+        except Exception as e:
+            logger.error(f"Error inserting user skills: {e}", exc_info=True)
+            raise
+
+    async def get_plan_by_id(self, plan_id: int) -> Optional[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("career_plan_info")
+                .select("*")
+                .eq("plan_id", plan_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+
+        except Exception as e:
+            logger.error(f"Error getting plan by id: {e}", exc_info=True)
+            raise
+
+    async def get_plan_content(self, plan_id: int) -> List[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("career_plan_content")
+                .select("*")
+                .eq("plan_id", plan_id)
+                .order("week_number")
+                .execute()
+            )
+            return result.data if result.data else []
+
+        except Exception as e:
+            logger.error(f"Error getting plan content: {e}", exc_info=True)
+            raise
+
+    async def get_plan_user_skills(self, plan_id: int) -> List[Dict[str, Any]]:
+        try:
+            result = (
+                self.client.table("career_user_skills")
+                .select("*")
+                .eq("plan_id", plan_id)
+                .execute()
+            )
+            return result.data if result.data else []
+
+        except Exception as e:
+            logger.error(f"Error getting plan user skills: {e}", exc_info=True)
+            raise
 
     async def get_user_plans(self, user_id: UUID) -> List[Dict[str, Any]]:
-        """Get all plans for a user"""
         try:
-            return db.read(
-                "career_plan_info",
-                {"user_id": str(user_id)},
-                order_by="created_at",
-                desc=True
+            result = (
+                self.client.table("career_plan_info")
+                .select("*")
+                .eq("user_id", str(user_id))
+                .order("created_at", desc=True)
+                .execute()
             )
-        except Exception as e:
-            logger.error(f"Error getting user plans: {e}")
-            return []
+            return result.data if result.data else []
 
-    async def get_plan_details(self, plan_id: int) -> Optional[Dict[str, Any]]:
-        """Get complete plan details"""
-        try:
-            plans = db.read("career_plan_info", {"plan_id": plan_id}, limit=1)
-            plan = plans[0] if plans else None
-            
-            if plan:
-                # Add track info
-                track = await self.get_track_by_id(plan["track_id"])
-                if track:
-                    plan["track_name"] = track.get("track_name")
-            
-            return plan
         except Exception as e:
-            logger.error(f"Error getting plan details: {e}")
+            logger.error(f"Error getting user plans: {e}", exc_info=True)
+            raise
+
+    # =====================================================
+    # CURATED / DISCOVERED LEARNING RESOURCES
+    # =====================================================
+
+    def _format_duration_label(self, minutes: Optional[int]) -> Optional[str]:
+        if not minutes or int(minutes) <= 0:
             return None
 
-    async def get_plan_skill_gaps(self, plan_id: int) -> List[Dict[str, Any]]:
-        """Get skill gaps for a plan"""
-        try:
-            return db.read("career_user_skills", {"plan_id": plan_id})
-        except Exception as e:
-            logger.error(f"Error getting skill gaps: {e}")
-            return []
+        minutes = int(minutes)
+        if minutes >= 60:
+            hours = minutes // 60
+            rem = minutes % 60
+            if rem == 0:
+                return f"{hours} hour" if hours == 1 else f"{hours} hours"
+            return f"{hours}h {rem}m"
 
-    async def get_plan_weekly_content(self, plan_id: int) -> List[Dict[str, Any]]:
-        """Get weekly content for a plan"""
+        return f"{minutes} min"
+
+    def _map_learning_resource_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        resource_type = (row.get("resource_type") or "").strip().lower()
+        duration_minutes = row.get("estimated_duration_minutes")
+
+        return {
+            "title": row.get("title"),
+            "url": row.get("url"),
+            "type": resource_type,
+            "snippet": row.get("snippet"),
+            "duration": self._format_duration_label(duration_minutes),
+            "youtube_duration_minutes": duration_minutes if resource_type == "youtube" else None,
+            "source_provider": row.get("source_provider"),
+            "source_domain": row.get("source_domain"),
+            "is_official": bool(row.get("is_official", False)),
+            "is_practical": bool(row.get("is_practical", False)),
+            "score": float(
+                row.get("final_score")
+                or row.get("quality_score")
+                or row.get("base_score")
+                or 0
+            ),
+        }
+
+    async def get_curated_learning_resources(
+        self,
+        track_id: int,
+        skill_id: int,
+        current_level: str,
+        target_level: str,
+        limit: int = 12,
+    ) -> List[Dict[str, Any]]:
         try:
-            return db.read(
-                "career_plan_content",
-                {"plan_id": plan_id},
-                order_by="week_number"
+            current_level = (current_level or "none").strip().lower()
+            target_level = (target_level or "beginner").strip().lower()
+
+            rows: List[Dict[str, Any]] = []
+
+            exact = (
+                self.client.table("curated_learning_resources")
+                .select("*")
+                .eq("is_active", True)
+                .eq("skill_id", skill_id)
+                .eq("track_id", track_id)
+                .eq("current_level", current_level)
+                .eq("target_level", target_level)
+                .order("priority", desc=False)
+                .order("quality_score", desc=True)
+                .limit(limit)
+                .execute()
             )
-        except Exception as e:
-            logger.error(f"Error getting weekly content: {e}")
-            return []
+            rows.extend(exact.data or [])
 
-    # =====================================================
-    # HELPER: Calculate min weeks
-    # =====================================================
-    
-    async def calculate_min_weeks(self, track_id: int, level: str) -> int:
-        """Calculate minimum weeks for track/level"""
+            if len(rows) < limit:
+                global_exact = (
+                    self.client.table("curated_learning_resources")
+                    .select("*")
+                    .eq("is_active", True)
+                    .eq("skill_id", skill_id)
+                    .is_("track_id", "null")
+                    .eq("current_level", current_level)
+                    .eq("target_level", target_level)
+                    .order("priority", desc=False)
+                    .order("quality_score", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                rows.extend(global_exact.data or [])
+
+            if len(rows) < limit:
+                soft_none = (
+                    self.client.table("curated_learning_resources")
+                    .select("*")
+                    .eq("is_active", True)
+                    .eq("skill_id", skill_id)
+                    .or_(f"track_id.eq.{track_id},track_id.is.null")
+                    .eq("current_level", "none")
+                    .eq("target_level", target_level)
+                    .order("priority", desc=False)
+                    .order("quality_score", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                rows.extend(soft_none.data or [])
+
+            final: List[Dict[str, Any]] = []
+            seen_urls = set()
+
+            for row in rows:
+                url = (row.get("url") or "").strip().lower()
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                final.append(self._map_learning_resource_row(row))
+                if len(final) >= limit:
+                    break
+
+            return final
+
+        except Exception as e:
+            logger.error(f"Error getting curated learning resources: {e}", exc_info=True)
+            raise
+
+    async def get_discovered_learning_resources(
+        self,
+        track_id: int,
+        skill_id: int,
+        canonical_topic: str,
+        current_level: str,
+        target_level: str,
+        limit: int = 12,
+    ) -> List[Dict[str, Any]]:
         try:
-            skills = await self.get_skills_by_track(track_id, level)
-            total_weeks = sum(s.get('duration_weeks', 4) for s in skills)
-            return max(total_weeks, 12)  # Minimum 12 weeks
-        except Exception as e:
-            logger.error(f"Error calculating min weeks: {e}")
-            return 12
+            current_level = (current_level or "none").strip().lower()
+            target_level = (target_level or "beginner").strip().lower()
+            canonical_topic = (canonical_topic or "").strip().lower()
 
-    # =====================================================
-    # ANALYTICS & STATS
-    # =====================================================
-    
-    async def get_track_stats(self, track_id: int) -> Dict[str, Any]:
-        """Get statistics for a track"""
+            rows: List[Dict[str, Any]] = []
+
+            exact = (
+                self.client.table("discovered_learning_resources")
+                .select("*")
+                .eq("is_active", True)
+                .eq("skill_id", skill_id)
+                .eq("track_id", track_id)
+                .eq("canonical_topic", canonical_topic)
+                .eq("current_level", current_level)
+                .eq("target_level", target_level)
+                .order("times_validation_passed", desc=True)
+                .order("final_score", desc=True)
+                .order("updated_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            rows.extend(exact.data or [])
+
+            if len(rows) < limit:
+                global_exact = (
+                    self.client.table("discovered_learning_resources")
+                    .select("*")
+                    .eq("is_active", True)
+                    .eq("skill_id", skill_id)
+                    .is_("track_id", "null")
+                    .eq("canonical_topic", canonical_topic)
+                    .eq("current_level", current_level)
+                    .eq("target_level", target_level)
+                    .order("times_validation_passed", desc=True)
+                    .order("final_score", desc=True)
+                    .order("updated_at", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                rows.extend(global_exact.data or [])
+
+            if len(rows) < limit:
+                soft_none = (
+                    self.client.table("discovered_learning_resources")
+                    .select("*")
+                    .eq("is_active", True)
+                    .eq("skill_id", skill_id)
+                    .or_(f"track_id.eq.{track_id},track_id.is.null")
+                    .eq("canonical_topic", canonical_topic)
+                    .eq("current_level", "none")
+                    .eq("target_level", target_level)
+                    .order("times_validation_passed", desc=True)
+                    .order("final_score", desc=True)
+                    .order("updated_at", desc=True)
+                    .limit(limit)
+                    .execute()
+                )
+                rows.extend(soft_none.data or [])
+
+            final: List[Dict[str, Any]] = []
+            seen_urls = set()
+
+            for row in rows:
+                url = (row.get("url") or "").strip().lower()
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                final.append(self._map_learning_resource_row(row))
+                if len(final) >= limit:
+                    break
+
+            return final
+
+        except Exception as e:
+            logger.error(f"Error getting discovered learning resources: {e}", exc_info=True)
+            raise
+
+    async def upsert_discovered_learning_resources(
+        self,
+        rows: List[Dict[str, Any]],
+    ) -> None:
         try:
-            skills = await self.get_skills_by_track(track_id)
-            return {
-                'total_skills': len(skills),
-                'avg_weeks': sum(s.get('duration_weeks', 4) for s in skills) / len(skills) if skills else 0
-            }
-        except Exception as e:
-            logger.error(f"Error getting track stats: {e}")
-            return {}
+            if not rows:
+                return
 
-    async def get_most_missing_skills(self, track_id: int) -> List[Dict[str, Any]]:
-        """Get most commonly missing skills for a track"""
-        # TODO: Implement with proper aggregation
-        return []
+            for row in rows:
+                url = (row.get("url") or "").strip()
+                skill_id = row.get("skill_id")
+                canonical_topic = (row.get("canonical_topic") or "").strip().lower()
+                current_level = (row.get("current_level") or "none").strip().lower()
+                target_level = (row.get("target_level") or "beginner").strip().lower()
+
+                if not url or not skill_id or not canonical_topic:
+                    continue
+
+                existing = (
+                    self.client.table("discovered_learning_resources")
+                    .select("*")
+                    .eq("skill_id", skill_id)
+                    .eq("canonical_topic", canonical_topic)
+                    .eq("current_level", current_level)
+                    .eq("target_level", target_level)
+                    .eq("url", url)
+                    .limit(1)
+                    .execute()
+                )
+
+                if existing.data:
+                    existing_row = existing.data[0]
+
+                    (
+                        self.client.table("discovered_learning_resources")
+                        .update({
+                            "times_selected": int(existing_row.get("times_selected", 1) or 1) + int(row.get("times_selected", 1) or 1),
+                            "times_validation_passed": int(existing_row.get("times_validation_passed", 1) or 1) + int(row.get("times_validation_passed", 1) or 1),
+                            "times_used_in_final_plan": int(existing_row.get("times_used_in_final_plan", 1) or 1) + int(row.get("times_used_in_final_plan", 1) or 1),
+                            "final_score": max(
+                                float(existing_row.get("final_score", 0) or 0),
+                                float(row.get("final_score", 0) or 0),
+                            ),
+                            "base_score": max(
+                                float(existing_row.get("base_score", 0) or 0),
+                                float(row.get("base_score", 0) or 0),
+                            ),
+                            "week_topic": row.get("week_topic"),
+                            "source_provider": row.get("source_provider"),
+                            "source_domain": row.get("source_domain"),
+                            "estimated_duration_minutes": row.get("estimated_duration_minutes"),
+                            "is_official": bool(row.get("is_official", False)),
+                            "is_practical": bool(row.get("is_practical", False)),
+                            "was_fallback": bool(row.get("was_fallback", False)),
+                            "track_id": row.get("track_id"),
+                            "plan_id": row.get("plan_id"),
+                            "title": row.get("title"),
+                            "snippet": row.get("snippet"),
+                            "resource_type": row.get("resource_type"),
+                            "is_active": True,
+                        })
+                        .eq("id", existing_row["id"])
+                        .execute()
+                    )
+                else:
+                    payload = {
+                        "track_id": row.get("track_id"),
+                        "skill_id": skill_id,
+                        "plan_id": row.get("plan_id"),
+                        "week_topic": row.get("week_topic"),
+                        "canonical_topic": canonical_topic,
+                        "current_level": current_level,
+                        "target_level": target_level,
+                        "resource_type": row.get("resource_type"),
+                        "title": row.get("title"),
+                        "url": url,
+                        "snippet": row.get("snippet"),
+                        "source_provider": row.get("source_provider"),
+                        "source_domain": row.get("source_domain"),
+                        "estimated_duration_minutes": row.get("estimated_duration_minutes"),
+                        "base_score": float(row.get("base_score", 0) or 0),
+                        "final_score": float(row.get("final_score", 0) or 0),
+                        "times_selected": int(row.get("times_selected", 1) or 1),
+                        "times_validation_passed": int(row.get("times_validation_passed", 1) or 1),
+                        "times_used_in_final_plan": int(row.get("times_used_in_final_plan", 1) or 1),
+                        "is_active": bool(row.get("is_active", True)),
+                        "is_official": bool(row.get("is_official", False)),
+                        "is_practical": bool(row.get("is_practical", False)),
+                        "was_fallback": bool(row.get("was_fallback", False)),
+                    }
+                    self.client.table("discovered_learning_resources").insert(payload).execute()
+
+        except Exception as e:
+            logger.error(f"Error upserting discovered learning resources: {e}", exc_info=True)
+            raise

@@ -1,0 +1,43 @@
+[33ma8d2354[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: career_build_back1_fix_errors
+[33mb30744b[m feat: career_build_back1_fix_errors
+[33m44b2d2b[m Delete venv311 directory
+[33m9b4ba53[m feat: complete backend1 career builder and fix routers
+[33mb5d714d[m Add lib folder
+[33m9ce70d7[m Add frontend without build folder
+[33md4fe63f[m Remove frontend folder
+[33m35cf58c[m add new frontend
+[33m92cc1dc[m remove old frontend
+[33m3ad7405[m feat: career_build_back1
+[33m41109ea[m[33m ([m[1;31morigin/CV-Optmization[m[33m)[m fix: Correct import statement casing for ATSAnalysisResponse
+[33m980204e[m Merge pull request #8 from Shorouqtareq982/CV-Optmization
+[33m4d89988[m feat: Implement bulk deletion of user files and enhance single file deletion with prefix support
+[33mb412271[m fix errors
+[33mfc5ed60[m feat: Integrate Cloudinary storage provider
+[33mb8c3bd8[m chore: Clear Supabase credentials in environment variables template
+[33mab95951[m Merge pull request #7 from Shorouqtareq982/CV-Optmization
+[33m355111f[m feat: Enhance CV optimization feature with dynamic user handling and improved file processing
+[33m1165b3d[m Merge pull request #6 from Shorouqtareq982/CV-Optmization
+[33m227d795[m create FileValidator
+[33m767b72a[m add jopPosting related db methods
+[33m5798bad[m create main cv optmization functionalities
+[33m77421b0[m feat: create Pydantic models for request/response schemas
+[33mb71d702[m Merge remote-tracking branch 'origin/main' into CV-Optmization
+[33ma679d8d[m feat: integrate Supabase provider and complete career builder
+[33ma9c233b[m add todo
+[33me42e57d[m feat: integrate Gemini AI model and enhance configuration
+[33me76e043[m[33m ([m[1;31morigin/career_plan[m[33m)[m Azure Setup
+[33mad117fa[m[33m ([m[1;31morigin/AI_Mock_Interview[m[33m)[m Merge branch 'main' into AI_Mock_Interview
+[33m588862c[m Azure setup
+[33md9d5e9f[m Merge pull request #4 from Shorouqtareq982/feat/frontend
+[33m85f1f45[m[33m ([m[1;31morigin/feat/frontend[m[33m)[m refactor: improve project structure with complete clean architecture
+[33m0f89388[m Merge pull request #3 from Shorouqtareq982/feat/frontend
+[33m673debe[m fix: reorganize Flutter project into frontend folder
+[33m7f353f1[m Merge pull request #2 from Shorouqtareq982/feat/frontend
+[33m290e310[m feat: add frontend initial structure with main.dart and app.dart
+[33m8cf49a5[m delete README.md and requirements
+[33mf5e2783[m Revert "deleted"
+[33m55a2c64[m deleted
+[33m4d82165[m File Structure Organized
+[33mac3aa37[m Delete Recommendation_Jobs_System directory
+[33m1239bb4[m Create documents
+[33mffd09e6[m Initial commit
