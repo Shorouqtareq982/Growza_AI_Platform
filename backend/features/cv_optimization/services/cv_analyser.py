@@ -9,6 +9,7 @@ from fastapi import HTTPException, UploadFile, status
 from features.cv_optimization.services.cv_scoring_service import CVScoringService
 from features.cv_optimization.repositories.cv_optmization_repo import CVOptRepository
 from features.cv_optimization.schemas import CVData, JobData
+from features.cv_optimization.helpers.section_analysis import analyze_section_analysis
 from shared.helpers.document_parser import DocumentParser
 from shared.helpers.text_extractor import TextExtractor
 from shared.helpers.file_validation import FileValidator
@@ -38,6 +39,13 @@ class CVAnalyser:
         self.parser = DocumentParser(self.llm)
         self.storage_provider = CloudinaryProvider()
         self.repo = CVOptRepository()
+
+    def _get_layout_value(self, cv_layout, field_name: str, default=None):
+        if cv_layout is None:
+            return default
+        if isinstance(cv_layout, dict):
+            return cv_layout.get(field_name, default)
+        return getattr(cv_layout, field_name, default)
 
     # ========================
     # PUBLIC METHODS
@@ -275,7 +283,7 @@ class CVAnalyser:
         if existing_report:
             existing_report["cv"] = {
                 "title": cv_data.get("title", "CV"),
-                "original_filename": cv_layout.get("original_filename") if cv_layout else None
+                "original_filename": self._get_layout_value(cv_layout, "original_filename")
             }
             existing_report["job_posting"] = {
                 "job_title": jd_data.get("job_title") if jd_data else None
@@ -296,7 +304,7 @@ class CVAnalyser:
         if final_report:
             final_report["cv"] = {
                 "title": cv_data.get("title", "CV"),
-                "original_filename": cv_layout.get("original_filename") if cv_layout else None
+                "original_filename": self._get_layout_value(cv_layout, "original_filename")
             }
             final_report["job_posting"] = {
                 "job_title": jd_data.get("job_title") if jd_data else None
@@ -453,7 +461,7 @@ class CVAnalyser:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"CV/JD parsing failed: {str(e)}"
             )
-
+        
     async def _parse_cv_file(self, cv_file: io.BytesIO, file_size_kb: float, file_type: str) -> tuple:
         """Parse CV file and extract layout analysis."""
         logger.debug(f"Starting to parse CV file: {cv_file.name}")
@@ -466,8 +474,9 @@ class CVAnalyser:
         # Extract text if layout analysis didn't provide it
         if not parsed_cv_text:
             parsed_cv_text = await TextExtractor.extract_text(cv_file)
-            if cv_layout_analysis and cv_layout_analysis.get('word_count') is None:
-                cv_layout_analysis["word_count"] = CVLayoutAnalyzer.word_count(parsed_cv_text)
+            if self._get_layout_value(cv_layout_analysis, "word_count") is None:
+                if isinstance(cv_layout_analysis, dict):
+                    cv_layout_analysis["word_count"] = CVLayoutAnalyzer.word_count(parsed_cv_text)
         
         # Parse CV content
         parsed_cv = await self.parser.parse_cv_text(parsed_cv_text)
@@ -590,12 +599,14 @@ class CVAnalyser:
     # ========================
 
     async def _perform_analysis(self, parsed_cv: dict, parsed_jd: Optional[dict]) -> dict:
-        """Perform ATS analysis using LLM."""
+        """Perform ATS analysis with Python section checks and LLM-based alignment."""
         try:
-            logger.debug("Preparing analysis prompt")
+            logger.debug("Preparing analysis inputs")
             job_description = parsed_jd if parsed_jd else "No job description provided"
 
-            # Remove PII fields from parsed CV
+            section_analysis = analyze_section_analysis(parsed_cv, parsed_jd)
+            
+            # Remove PII fields from parsed CV before sending it to llm
             parsed_cv = remove_pii_fields(parsed_cv)
 
             logger.debug("Sending request to LLM for CV analysis")
@@ -603,9 +614,9 @@ class CVAnalyser:
                 prompt=CV_ANALYST.format(cv_text=parsed_cv, job_description=job_description),
                 need_json_output=True,
                 schema=ATSAnalysisResponse,
-                temperature=0.1
+                temperature=0.3
             )
-
+            
             if not results:
                 logger.error("LLM returned empty response for CV analysis")
                 raise HTTPException(
@@ -614,7 +625,9 @@ class CVAnalyser:
                 )
             
             logger.info("LLM analysis completed successfully")
-            return results.dict() if isinstance(results, ATSAnalysisResponse) else results
+            analysis = results.dict() if isinstance(results, ATSAnalysisResponse) else results
+            analysis["Section_Analysis"] = section_analysis
+            return analysis
         except HTTPException:
             raise
         except Exception as e:

@@ -38,7 +38,6 @@ class DocumentParser:
         self,
         file: Union[str, io.BytesIO, BinaryIO, UploadFile],
         mask_pii: bool = True,
-        return_masked_text: bool = False
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Parse a CV file into:
@@ -59,7 +58,6 @@ class DocumentParser:
             print(f"Error parsing CV: {e}")
             return "", {}
 
-
     async def parse_cv_text(self, cv_text: str, mask_pii: bool = True) -> Tuple[str, Dict[str, Any]]:
         """
         Parse CV text into structured data using LLM.
@@ -71,7 +69,7 @@ class DocumentParser:
             text_to_process, mask_map = self._prepare_text(cv_text, mask_pii)
 
             parsed = await self._call_llm(text_to_process)
-            
+
             parsed_dict = self._normalize_llm_output(parsed)
 
             if not parsed_dict:

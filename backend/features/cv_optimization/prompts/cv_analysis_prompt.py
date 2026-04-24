@@ -4,7 +4,6 @@ Your task is to evaluate a CV and compare it to a job description.
 
 CRITICAL RULES:
 - Output ONLY valid, compact JSON (no non-printable characters)
-- Use binary checks (PASS/FAIL) for section evaluation
 - Count ONLY explicit matches from CV (no inference, no assumptions)
 - Normalize case when matching (Python = python = PYTHON)
 - Remove duplicates before counting
@@ -23,48 +22,7 @@ INPUT
 </JOB_DESCRIPTION>
 
 ====================================================================
-SECTION 1 — SECTION ANALYSIS (PASS/FAIL + NOTES)
-
-Evaluate each section per these criteria. Return Pass or Fail + specific, actionable notes (max 30 words).
-
-CONTACT INFO:
-- Required: Name, Email, Phone
-- Pass if all present and readable
-- Fail if any missing
-- Notes: Specify missing fields (e.g., "Missing phone number")
-
-WORK EXPERIENCE:
-- Section must exist with bullet points/descriptions for each role
-- Must include measurable achievements (quantified results) >= 5 measurable achievements across all roles
-- Each entry needs: company, title, dates, location
-- Pass if all criteria met
-- Fail if missing bullets, achievements, or required fields
-- Notes: List specific missing elements (e.g., "Missing measurable results in 2 of 3 roles")
-
-EDUCATION:
-- Section must exist with: degree/qualification, institution name, dates (required)
-- Optional: honors, coursework, GPA
-- Pass if required fields present
-- Fail if any required field missing
-- Notes: Specify missing info (e.g., "Missing graduation date for Bachelor degree")
-
-SKILLS:
-- Section must exist with at least 5 relevant skills
-- Must be ATS-friendly (no images/icons)
-- Preferred: skills categorized (tools, languages, frameworks, soft skills)
-- Pass if requirements met
-- Fail if <5 skills or skills too generic/irrelevant
-- Notes: Identify issues (e.g., "Only 3 skills listed, need at least 5"; "Skills too generic: communication, teamwork")
-
-ADDITIONAL SECTIONS (Certifications, Projects, Publications, Volunteer, Awards):
-- Evaluate relevance to JD
-- Check if content adds value to candidacy
-- Pass if relevant sections present with value-add
-- Fail if missing relevant sections or content irrelevant
-- Notes: Identify gaps (e.g., "Consider adding Certifications for AWS certs mentioned in JD")
-
-====================================================================
-SECTION 2 — JOB ALIGNMENT ANALYSIS (MATCH SCORE = 0—100)
+SECTION 1 — JOB ALIGNMENT ANALYSIS (MATCH SCORE = 0—100)
 
 SCORING FORMULA (Total: 100 points max):
 Match_Score = Title_Match(5) + Education_Level_Match(5) + Experience_Level_Match(5) + 
@@ -132,7 +90,7 @@ MATCH SCORE CALCULATION:
 - Cap at 100: Match_Score = min(total_points, 100)
 
 ====================================================================
-SECTION 3 — INDUSTRY KEYWORD OPTIMIZATION
+SECTION 2 — INDUSTRY KEYWORD OPTIMIZATION
 
 Identify valuable industry/role-specific keywords missing from CV (even if not in JD).
 
@@ -159,7 +117,7 @@ PLACEMENT RULES:
 - Place naturally, avoid keyword stuffing, maintain readability
 
 ====================================================================
-SECTION 4 — IMPROVEMENT TIPS (Max 10 actionable tips)
+SECTION 3 — IMPROVEMENT TIPS (Max 10 actionable tips)
 
 Provide specific, implementable suggestions with examples. Each tip must reference exact content.
 
@@ -172,31 +130,9 @@ Examples of strong tips:
 - Missing sections: "Add Projects section highlighting 2-3 relevant portfolio items with technologies used"
 
 ====================================================================
-SECTION 5 — OUTPUT EXAMPLE (Strictly follow this format, no deviations allowed):
+SECTION 4 — OUTPUT EXAMPLE (Strictly follow this format, no deviations allowed):
 
 {{
-    "Section_Analysis": {{
-        "Contact_Info": {{
-            "Pass": true,
-            "Notes": "All contact info present: name, email, phone, and LinkedIn. Email format valid. Location included."
-        }},
-        "Work_Experience": {{
-            "Pass": true,
-            "Notes": "Strong bullet points with action verbs. Missing measurable KPIs in 2 bullets. Dates formatted consistently."
-        }},
-        "Education": {{
-            "Pass": true,
-            "Notes": "Degree, institution, and graduation year provided. Honors missing but optional."
-        }},
-        "Skills": {{
-            "Pass": false,
-            "Notes": "Skills not grouped (e.g., Tools, Languages). ATS-friendly, but missing several key technical skills."
-        }},
-        "Additional_Sections": {{
-            "Pass": true,
-            "Notes": "Projects section is relevant and clearly formatted. Lacks detail on technologies used."
-        }}
-    }},
     "Job_Alignment": {{
         "Match_Score": 53,
         "Title_Match": true,

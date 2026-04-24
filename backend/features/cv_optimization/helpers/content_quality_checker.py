@@ -47,6 +47,7 @@ STANDARD_HEADINGS = [
     "references",
 ]
 
+
 # Logical order tiers (earlier tier should appear before later)
 HEADING_TIERS = {
     "summary": 1, "objective": 1, "profile": 1, "about": 1,
@@ -72,7 +73,7 @@ STRONG_ACTION_VERBS = {
     "secured", "won", "earned",
     # Creation
     "developed", "built", "created", "designed", "established", "launched",
-    "implemented", "deployed", "engineered", "architected", "founded",
+    "implemented", "deployed", "engineered", "architected", "founded", "initiated",
     # Improvement
     "improved", "optimized", "streamlined", "enhanced", "increased", "reduced",
     "decreased", "accelerated", "boosted", "transformed", "revamped", "upgraded",
@@ -88,7 +89,7 @@ STRONG_ACTION_VERBS = {
     "trained", "onboarded", "recruited", "hired",
     # Finance/Sales
     "generated", "grew", "scaled", "drove", "expanded", "acquired", "retained",
-    "forecasted", "budgeted",
+    "forecasted", "budgeted", "negotiated", "closed",
 }
 
 PERSONAL_PRONOUNS = {"i", "me", "my", "myself", "mine", "we", "our", "ours", "ourselves"}
@@ -107,28 +108,9 @@ VAGUE_PHRASES = [
     r"\bgo[\s-]?getter\b",
     r"\bthink outside the box\b",
     r"\bsynergy\b",
-    r"\bleverage\b",
-    r"\bdiverse background\b",
-    r"\bvarious\b",
-    r"\bseveral\b",
-    r"\bmany years\b",
-    r"\strategic thinker\b",
+    r"\bstrategic thinker\b",
     r"\bproblem[\s-]?solver\b",
     r"\bmultitasker\b",
-    r"\binnovative\b",
-    r"\bpassionate\b",
-    r"\bdriven\b",
-    r"\bmotivated\b",
-    r"\benthusiastic\b",
-    r"\bcreative\b",
-    r"\badaptive\b",
-    r"\bflexible\b",
-    r"\breliable\b",
-    r"\bdedicated\b",
-    r"\befficient\b",
-    r"\beffective\b",
-    r"\bproficient\b",
-    r"\bskilled\b",
     r"\bresponsible for\b",
     r"\bhelped (with|to)\b",
     r"\bworked on\b",
@@ -254,7 +236,7 @@ def check_headings(headings_from_parsed_content: list[str]) -> dict:
     if not standardized_headings:
         return {
             "pass": False,
-            "details": "No standard section headings detected or could be normalized.",
+            "details": "We could not identify clear standard section headings. Use headings like Summary, Work Experience, Education, and Skills.",
             "headings": [],
         }
 
@@ -269,10 +251,10 @@ def check_headings(headings_from_parsed_content: list[str]) -> dict:
 
     passed = len(standardized_headings) >= 2 and not out_of_order
     details = (
-        f"Detected {len(standardized_headings)} headings: {', '.join(standardized_headings)}."
+        f"Detected {len(standardized_headings)} section headings: {', '.join(standardized_headings)}."
     )
     if out_of_order:
-        details += f" Out-of-order issues: {'; '.join(out_of_order)}."
+        details += f" Some sections are out of order: {'; '.join(out_of_order)}."
 
     return {"pass": passed, "details": details, "headings": standardized_headings}
 
@@ -296,21 +278,21 @@ def check_action_verbs_and_pronouns(cv_text: str) -> dict:
     if verb_ok:
         unique_verbs = sorted(set(found_verbs))
         details_parts.append(
-            f"✓ {len(found_verbs)} action verb usage(s) found "
+            f"Found {len(found_verbs)} action-verb usage(s) "
             f"({', '.join(unique_verbs[:8])}{'...' if len(unique_verbs) > 8 else ''})."
         )
     else:
         details_parts.append(
-            f"✗ Only {len(found_verbs)} action verb(s) found (need ≥ 5)."
+            f"Only {len(found_verbs)} strong action verb(s) found. Aim for at least 5 to make achievements clearer."
         )
 
     if pronoun_ok:
-        details_parts.append("✓ No personal pronouns detected.")
+        details_parts.append("No personal pronouns detected.")
     else:
         uniq = sorted(set(found_pronouns))
         details_parts.append(
-            f"✗ Personal pronouns found: {', '.join(uniq)} "
-            f"({len(found_pronouns)} occurrence(s))."
+            f"Personal pronouns found: {', '.join(uniq)} "
+            f"({len(found_pronouns)} occurrence(s)). Consider rewriting bullets without first-person pronouns."
         )
 
     return {
@@ -339,12 +321,12 @@ def check_clarity(cv_text: str) -> dict:
     passed = len(found_vague) == 0
 
     if passed:
-        details = "✓ No vague or generic phrases detected."
+        details = "No vague or generic phrases detected."
     else:
         items = [f"'{p}' ×{c}" for p, c in found_vague[:10]]
         details = (
-            f"✗ {len(found_vague)} vague phrase type(s) found: {', '.join(items)}."
-            " Replace with specific, measurable descriptions."
+            f"Found {len(found_vague)} vague phrase type(s): {', '.join(items)}."
+            " Replace these with specific, measurable statements."
         )
 
     return {"pass": passed, "details": details, "vague_phrases": found_vague}
@@ -384,7 +366,7 @@ def check_quantifiable_impact(cv_parsed_content: dict) -> dict:
     passed = count >= 5
 
     details_parts = [
-        f"{'✓' if passed else '✗'} Found {count} measurable result(s) (need ≥ 5)."
+        f"Found {count} measurable result(s). Minimum target is 5."
     ]
 
     if results:
@@ -392,11 +374,11 @@ def check_quantifiable_impact(cv_parsed_content: dict) -> dict:
         for _, cat, _ in results:
             by_cat[cat] = by_cat.get(cat, 0) + 1
         cat_summary = ", ".join(f"{cat}: {n}" for cat, n in sorted(by_cat.items()))
-        details_parts.append(f"Breakdown — {cat_summary}.")
+        details_parts.append(f"Category breakdown: {cat_summary}.")
 
     if not passed:
         details_parts.append(
-            "Add more metrics: numbers, percentages, dollar figures, team sizes, time saved."
+            "Add more metrics such as percentages, dollar impact, team size, delivery volume, or time saved."
         )
 
     return {
@@ -418,15 +400,15 @@ def check_spelling_and_grammar(cv_text: str, extra_skills: set = None, user_info
 
     details_parts = []
     if len(typos) == 0:
-        details_parts.append("✓ No spelling or grammar issues detected.")
+        details_parts.append("No spelling or grammar issues detected.")
     else:
         details_parts.append(
-            f"✗ Found {len(typos)} potential issue(s)."
+            f"Found {len(typos)} potential spelling/grammar issue(s)."
         )
         for t in typos[:5]:  # Show up to 5 issues
             error = t['error']
             suggestions = ", ".join(t['suggestions'][:3]) if t['suggestions'] else "no suggestions"
-            details_parts.append(f"   - '{error}' → Suggestions: {suggestions}")
+            details_parts.append(f"- '{error}' Suggested fixes: {suggestions}")
 
     return {
         "pass": passed,
@@ -457,7 +439,7 @@ def check_cv_content_quality(cv_text: str, cv_parsed_content: dict) -> dict:
         {
             "id": 1,
             "name": "Headings in logical order and clearly defined",
-            **check_headings(cv_parsed_content['all_sections_order']),
+            **check_headings(cv_parsed_content['all_sections_in_order']),
         },
         {
             "id": 2,

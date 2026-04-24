@@ -19,11 +19,13 @@ TODO:
 
 TODO 2:
 [ ] recheck job aligment score
-[ ] improve cv parsing prompt to reduce llm hallucination caused by masking 
 [ ] method to detect cv sections
-[ ] recheck on buzzwords and action verbs to make sure they are relevant and up-to-date with current industry standards
-[ ] move section analysis to be implemented in python instead of depend on llm
-[ ] for masking add pattern based masking in addition to library based masking
-[ ] for unmasking make sure the llm keep the same format of the masked tokens and doesn't change them in a way that makes it impossible to unmask them later
+[x] recheck on buzzwords and action verbs to make sure they are relevant and up-to-date with current industry standards
+[x] preseve new line in cv text extraction
+[x] move section analysis to be implemented in python instead of depend on llm
+[x] for masking add pattern based masking in addition to library based masking
+[x] enhance ats_issues / content_issues to be user friendly feedback
+[x] improve cv parsing prompt to reduce llm hallucination caused by masking 
+[x] for unmasking make sure the llm keep the same format of the masked tokens and doesn't change them in a way that makes it impossible to unmask them later
 [ ] add more test cases for the masking and unmasking process to ensure its reliability and robustness
 """
