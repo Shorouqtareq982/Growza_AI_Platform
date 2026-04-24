@@ -87,7 +87,10 @@ CLASS_INSTRUCTION_MAP = {
             "• Break concepts into smaller steps.\n"
             "• Use simple language and define technical terms.\n"
             "• Add more foundational explanation before advanced application.\n"
-            "• Prefer beginner-friendly resources and guided exercises."
+            "• Prefer beginner-friendly resources and guided exercises.\n"
+            "• Keep at least one project per week (simple beginner project).\n"
+            "• Projects must be small, guided, and easy to complete\n"
+            "• Avoid overwhelming content or long complex materials."
         ),
         "priority": 6,
     },
