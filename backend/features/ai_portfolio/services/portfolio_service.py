@@ -31,6 +31,7 @@ class PortfolioService:
         user_id: str,
         data: PortfolioData,
     ):
+        print("Creating portfolio for user:", user_id)
         payload = {
             "user_id": user_id,
             "title": f"{data.name} Portfolio" if data.name else "My Portfolio",

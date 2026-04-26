@@ -107,7 +107,7 @@ class PortfolioRepository:
 			.eq("user_id", user_id)
 			.order("updated_at", desc=True)
 			.limit(1)
-			.single()
+			.maybe_single()
 			.execute()
 		)
 		if not response.data:
