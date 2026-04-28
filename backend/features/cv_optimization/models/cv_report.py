@@ -39,8 +39,32 @@ class IndustryKeywordOptimization(BaseModel):
     Suggestions: List[str]
     Recommended_Keywords: List[str]
 
+
+class SkillsAnalysis(BaseModel):
+    Matched_Skills: List[str]
+    Missing_Skills: List[str]
+
+
+class ExperienceAlignment(BaseModel):
+    Matched_Experience: List[str]
+    Missing_Experience: List[str] 
+
+class KeywordAnalysis(BaseModel):
+    Keywords_in_Job_Description: List[str]
+    Matched_Keywords: List[str] 
+    Missing_Keywords: List[str] 
+
+class JobAlignment(BaseModel):
+    Match_Score: int
+    Title_Match: bool 
+    Experience_Level_Match: bool
+    Education_Level_Match: bool
+    Skills_Analysis: SkillsAnalysis
+    Experience_Alignment: ExperienceAlignment
+    Keyword_Analysis: KeywordAnalysis 
+
 class LLMInsights(BaseModel):
-    Job_Alignment: Optional[Dict[str, Any]]
+    Job_Alignment: Optional[JobAlignment]
     Keyword_Optimization: Optional[IndustryKeywordOptimization]
     Improvement_Tips: Optional[List[str]]
 
