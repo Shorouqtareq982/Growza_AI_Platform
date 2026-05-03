@@ -30,10 +30,11 @@ class LLMProvider(ABC):
 def create_llm_provider(
     settings: Optional[Settings] = None,
     system_prompt: Optional[str] = None,
+    provider_name: Optional[str] = None,
     model: Optional[str] = None
 ) -> LLMProvider:
     settings = settings or get_settings()
-    provider = (settings.LLM_PROVIDER or "openrouter-with-fallback").strip().lower()  # Default to OpenRouter with fallback
+    provider = (provider_name or settings.LLM_PROVIDER or "openrouter-with-fallback").strip().lower()  # Default to OpenRouter with fallback
 
     # Log which provider is being used
     import logging
