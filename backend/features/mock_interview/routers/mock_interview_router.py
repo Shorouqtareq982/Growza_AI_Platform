@@ -9,8 +9,10 @@ from features.mock_interview.schemas.mock_interview_schemas import (
     StartSessionRequest,
     StartSessionResponse,
     NotifyUploadRequest,
-    StatusResponse,
-    AnalysisResponse,
+    NotifyUploadResponse,
+    UploadStatusResponse,
+    BehavioralReportResponse,
+    TechnicalReportResponse,
 )
 from features.mock_interview.repositories.mock_interview_repository import MockInterviewRepository
 from features.mock_interview.services.interview_service import MockInterviewService
@@ -45,7 +47,7 @@ async def stream_question_audio(
     return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
 
 
-@router.post("/behavioural/notify-upload", response_model=StatusResponse)
+@router.post("/behavioural/notify-upload", response_model=NotifyUploadResponse, status_code=202)
 async def notify_behavioral_upload(
     payload: NotifyUploadRequest,
     background_tasks: BackgroundTasks,
@@ -55,27 +57,45 @@ async def notify_behavioral_upload(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    await service.verify_blob_ready(payload.blob_url)
-
     background_tasks.add_task(
-        service.process_behavioral_upload,
+        service.queue_behavioral_upload,
         payload.session_id,
         payload.blob_url,
     )
-    return StatusResponse(status="processing")
+    return NotifyUploadResponse(session_id=payload.session_id)
 
 
-@router.get("/analysis/{session_id}", response_model=AnalysisResponse)
-async def get_analysis(
+@router.get("/upload-status/{session_id}", response_model=UploadStatusResponse)
+async def get_upload_status(
+    session_id: UUID,
+    service: MockInterviewService = Depends(get_service),
+):
+    status = await service.get_session_status(session_id)
+    return UploadStatusResponse(status=status)
+
+
+@router.get("/analysis/{session_id}/behavioral-report", response_model=BehavioralReportResponse)
+async def get_behavioral_report(
     session_id: UUID,
     service: MockInterviewService = Depends(get_service),
 ):
     analysis = await service.get_analysis(session_id)
-    return AnalysisResponse(
+    return BehavioralReportResponse(
         analysis_id=UUID(analysis["analysis_id"]),
         behavioral_report=analysis.get("behavioral_report"),
-        technical_report=analysis.get("technical_report"),
         analysis_metrics=analysis.get("analysis_metrics") or {},
-        overall_score=analysis.get("overall_score"),
+        analyzed_at=analysis["analyzed_at"],
+    )
+
+
+@router.get("/analysis/{session_id}/technical-report", response_model=TechnicalReportResponse)
+async def get_technical_report(
+    session_id: UUID,
+    service: MockInterviewService = Depends(get_service),
+):
+    analysis = await service.get_analysis(session_id)
+    return TechnicalReportResponse(
+        analysis_id=UUID(analysis["analysis_id"]),
+        technical_report=analysis.get("technical_report"),
         analyzed_at=analysis["analyzed_at"],
     )

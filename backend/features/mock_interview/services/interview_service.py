@@ -5,7 +5,7 @@ import os
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional, cast
 from uuid import UUID
 
 from azure.storage.blob import BlobClient, BlobSasPermissions, generate_blob_sas
@@ -14,9 +14,10 @@ from fastapi import HTTPException
 from core.config import settings
 from features.mock_interview.ml_model import behavioral_pipeline, technical_pipeline
 from features.mock_interview.repositories.mock_interview_repository import MockInterviewRepository
-from features.mock_interview.schemas.mock_interview_schemas import GeminiFeedback
 from features.mock_interview.services.assemblyai_service import AssemblyAIService
+from features.mock_interview.services.behavioral_report_service import BehavioralReportService
 from features.mock_interview.services.elevenlabs_service import ElevenLabsService
+from features.mock_interview.services.technical_report_service import TechnicalReportService
 from shared.providers.llm_models.gemini import Gemini
 from shared.providers.storage.azure_blob_storage import get_azure_storage_provider
 
@@ -30,6 +31,8 @@ class MockInterviewService:
         self.gemini = Gemini(settings)
         self.transcriber = AssemblyAIService()
         self.prompts_dir = Path(__file__).resolve().parent.parent / "prompts"
+        self.behavioral_reports = BehavioralReportService(self.gemini, self.prompts_dir)
+        self.technical_reports = TechnicalReportService(self.gemini, self.prompts_dir)
 
     async def start_session(self, role_name: str, user_id: UUID) -> Dict[str, Any]:
         role = await self.repo.get_role_by_name(role_name)
@@ -69,11 +72,21 @@ class MockInterviewService:
                 logger.warning("Session not found for behavioral processing")
                 return
 
+            await self._safe_update_session_status(session_id, "processing")
+
+            role_name = None
+            try:
+                role = await self.repo.get_role_by_id(UUID(session["role_id"]))
+                if role:
+                    role_name = role.get("role_name")
+            except Exception as e:
+                logger.warning(f"Failed to resolve role for session: {e}")
+
             await self._wait_for_blob_ready(blob_url)
 
             video_bytes = await self._download_blob_bytes(blob_url)
             metrics = await asyncio.to_thread(self._run_behavioral_pipeline, video_bytes)
-            report = await self._build_behavioral_report(metrics)
+            report = await self.behavioral_reports.build_report(metrics, role_name=role_name)
             await self.repo.upsert_behavioral_analysis(
                 session_id=session_id,
                 analysis_metrics=metrics,
@@ -83,6 +96,8 @@ class MockInterviewService:
             transcript_payload = metrics.get("transcript_payload")
             if transcript_payload:
                 await self._store_transcript_payload(session, transcript_payload)
+                if settings.GEMINI_REQUEST_DELAY_SECONDS > 0:
+                    await asyncio.sleep(settings.GEMINI_REQUEST_DELAY_SECONDS)
                 await self.process_technical_analysis(
                     session_id=session_id,
                     response_payload=json.dumps(transcript_payload),
@@ -90,11 +105,32 @@ class MockInterviewService:
             else:
                 logger.warning("Transcript payload missing; skipping technical analysis")
 
-            await self._safe_update_session_status(session_id, "completed")
+            await self._safe_update_session_status(session_id, "finished")
             await self._safe_delete_blob(blob_url)
         except Exception:
             await self._safe_update_session_status(session_id, "failed")
             logger.exception("Behavioral analysis background task failed")
+
+    async def queue_behavioral_upload(
+        self,
+        session_id: UUID,
+        blob_url: str,
+        max_wait_seconds: int = 120,
+        poll_interval_seconds: int = 5,
+        min_size_bytes: int = 1024,
+    ) -> None:
+        await self._safe_update_session_status(session_id, "uploading")
+
+        deadline = datetime.utcnow().timestamp() + max_wait_seconds
+        while datetime.utcnow().timestamp() < deadline:
+            if await self._is_blob_ready(blob_url, min_size_bytes=min_size_bytes):
+                await self._safe_update_session_status(session_id, "uploaded")
+                await self.process_behavioral_upload(session_id, blob_url)
+                return
+            await asyncio.sleep(poll_interval_seconds)
+
+        await self._safe_update_session_status(session_id, "failed")
+        logger.warning("Blob not available before timeout; marking session failed")
 
     async def process_technical_analysis(self, session_id: UUID, response_payload: Optional[str] = None) -> str:
         session = await self.repo.get_session(session_id)
@@ -107,6 +143,7 @@ class MockInterviewService:
 
         questions = await self.repo.list_behavioral_questions(role["role_name"])
         question_ids = [UUID(item["question_id"]) for item in questions[:7]]
+
         if len(question_ids) < 7:
             raise HTTPException(status_code=400, detail="Insufficient questions for technical analysis")
 
@@ -116,32 +153,31 @@ class MockInterviewService:
                 raise HTTPException(status_code=404, detail="Transcript not found")
             response_payload = transcript_row["response"]
 
-        chunks = technical_pipeline.chunk_transcript_words(response_payload)
-        if len(chunks) != 7:
-            raise HTTPException(status_code=400, detail="Transcript chunk count must be 7")
+        response_payload_text = cast(str, response_payload)
 
-        cleaned_chunks = technical_pipeline.preprocess_chunks(chunks)
+        full_transcript_text = technical_pipeline.extract_full_transcript_text(response_payload_text)
+        try:
+            technical_pipeline.validate_full_transcript_text(full_transcript_text)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
-        question_items = questions[:7]
-        qa_pairs = [
-            {
-                "question": item.get("question_text") or "",
-                "answer": cleaned_chunks[index] if index < len(cleaned_chunks) else "",
-            }
-            for index, item in enumerate(question_items)
-        ]
-
-        for index, chunk in enumerate(cleaned_chunks):
-            await self.repo.insert_session_response(
-                user_id=UUID(session["user_id"]),
-                question_id=question_ids[index],
-                response=chunk,
-            )
-
-        report = await self._build_technical_report(
-            qa_pairs,
-            role.get("role_name") or "the role",
+        await self.repo.insert_session_response(
+            user_id=UUID(session["user_id"]),
+            question_id=question_ids[0],
+            response=full_transcript_text,
         )
+
+        try:
+            questions_text = technical_pipeline.build_questions_text(questions, limit=7)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        report = await self.technical_reports.build_report_smart(
+            questions_text=questions_text,
+            full_transcript=full_transcript_text,
+            role_name=role.get("role_name") or "the role",
+        )
+
         await self.repo.upsert_technical_analysis(session_id=session_id, technical_report=report)
         return report
 
@@ -150,6 +186,12 @@ class MockInterviewService:
         if not analysis:
             raise HTTPException(status_code=404, detail="Analysis not found")
         return analysis
+
+    async def get_session_status(self, session_id: UUID) -> str:
+        session = await self.repo.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return session.get("status") or "unknown"
 
     async def _create_video_upload_sas(self, session_id: UUID) -> tuple[str, str, datetime]:
         try:
@@ -195,6 +237,17 @@ class MockInterviewService:
         except Exception as e:
             logger.error(f"Blob verification failed: {e}")
             raise HTTPException(status_code=404, detail="Blob not found") from e
+
+    async def _is_blob_ready(self, blob_url: str, min_size_bytes: int = 1) -> bool:
+        try:
+            credential = settings.STORAGE_ACCOUNT_KEY or None
+            blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
+            props = blob_client.get_blob_properties()
+            size = getattr(props, "size", None)
+            return size is not None and size >= min_size_bytes
+        except Exception as e:
+            logger.debug(f"Blob readiness check failed: {e}")
+            return False
 
     async def _safe_delete_blob(self, blob_url: str) -> None:
         try:
@@ -306,31 +359,6 @@ class MockInterviewService:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
 
-    async def _build_behavioral_report(self, metrics: Dict[str, Any]) -> str:
-        template = self._load_prompt("behavioral_report_prompt.txt")
-        prompt = template.replace(
-            "[Paste Numerical Scores/Data Here]",
-            json.dumps(metrics, ensure_ascii=False),
-        )
-        feedback = await self._get_gemini_feedback(prompt)
-        return self._format_feedback(feedback)
-
-    async def _build_technical_report(self, qa_pairs: List[Dict[str, str]], role_name: str) -> str:
-        payload = "\n".join(
-            [
-                f"Q{i + 1}: {pair.get('question', '')}\nA{i + 1}: {pair.get('answer', '')}"
-                for i, pair in enumerate(qa_pairs)
-            ]
-        )
-        template = self._load_prompt("technical_report_prompt.txt")
-        prompt = (
-            template
-            .replace("[Insert Job Title]", role_name)
-            .replace("[Paste Answers Here]", payload)
-        )
-        feedback = await self._get_gemini_feedback(prompt)
-        return self._format_feedback(feedback)
-
     def _load_prompt(self, filename: str) -> str:
         prompt_path = self.prompts_dir / filename
         if not prompt_path.exists():
@@ -358,44 +386,6 @@ class MockInterviewService:
         except Exception as e:
             logger.warning(f"Failed to store transcript payload: {e}")
 
-    async def _get_gemini_feedback(self, prompt: str) -> GeminiFeedback:
-        last_error: Optional[Exception] = None
-        for attempt in range(3):
-            result = await self.gemini.get_response(
-                prompt=prompt,
-                need_json_output=True,
-                schema=GeminiFeedback,
-                expecting_longer_output=False,
-            )
-            if result is None:
-                last_error = HTTPException(status_code=422, detail="Gemini response failed")
-            elif isinstance(result, GeminiFeedback):
-                return result
-            elif isinstance(result, str):
-                try:
-                    return GeminiFeedback.model_validate_json(result)
-                except Exception as e:
-                    last_error = e
-                    logger.error(f"Gemini JSON parse failed: {e}")
-            elif isinstance(result, dict):
-                return GeminiFeedback(**result)
-            else:
-                last_error = HTTPException(status_code=422, detail="Gemini response invalid")
-
-            if attempt < 2:
-                await asyncio.sleep(5)
-
-        if isinstance(last_error, HTTPException):
-            raise last_error
-        raise HTTPException(status_code=422, detail="Gemini response failed")
-
-    def _format_feedback(self, feedback: GeminiFeedback) -> str:
-        return (
-            f"Strengths: {feedback.strengths}\n"
-            f"Weaknesses: {feedback.weaknesses}\n"
-            f"Suggestions: {feedback.suggestions}"
-        )
-
     async def _get_latest_valid_transcript_response(self, user_id: UUID) -> str:
         responses = await self.repo.list_responses_for_user(user_id=user_id)
         for response in responses:
@@ -403,7 +393,8 @@ class MockInterviewService:
             if not isinstance(payload, str):
                 continue
             try:
-                technical_pipeline.validate_transcript_words(payload)
+                text = technical_pipeline.extract_full_transcript_text(payload)
+                technical_pipeline.validate_full_transcript_text(text)
                 return payload
             except ValueError:
                 continue
