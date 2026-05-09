@@ -65,6 +65,11 @@ import '../../features/job_matching/presentation/screens/recommended_jobs_screen
 import '../../features/job_matching/presentation/screens/job_details_screen.dart';
 import '../../features/job_matching/domain/entities/job_entity.dart';
 
+// // ── Mock Interview ─────────────────────────────────────────────────────
+import '../../features/mock_interview/presentation/screens/interview_feedback_screen.dart';
+import '../../features/mock_interview/presentation/screens/interview_feedback_detail_screen.dart';
+import '../../features/mock_interview/presentation/screens/interview_session_screen.dart';
+
 Widget _withAuthTheme(BuildContext context, Widget child) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
   if (isDark) return child;
@@ -426,6 +431,8 @@ class AppRouter {
         name: 'career-builder',
         builder: (context, state) => const CareerBuilderScreen(),
       ),
+
+      // // ── Mock Interview ──────────────────────────────────────────────────────
       GoRoute(
         path: '/career-build',
         name: 'career-build-entry',
@@ -470,8 +477,28 @@ class AppRouter {
       GoRoute(
         path: '/mock-interview',
         name: 'mock-interview',
-        builder: (context, state) => const MockInterviewScreen(),
+        builder: (context, state) => const InterviewFeedbackScreen(),
       ),
+      GoRoute(
+        path: '/interview-session',
+        name: 'interview-session',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return InterviewSessionScreen(
+            roleName: extra['roleName'] as String,
+            roleId: extra['roleId'] as String,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/interview-feedback-detail',
+        name: 'interview-feedback-detail',
+        builder: (context, state) {
+          final sessionId = state.extra as String;
+          return InterviewFeedbackDetailScreen(sessionId: sessionId);
+        },
+      ),
+
       GoRoute(
         path: '/market-insights',
         name: 'market-insights',
