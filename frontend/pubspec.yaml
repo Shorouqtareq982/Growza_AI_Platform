@@ -51,10 +51,12 @@ dependencies:
 
   # Utils
   url_launcher: ^6.2.4
-  path_provider: ^2.1.1              # ✨ مرة واحدة
-  permission_handler: ^11.3.1        # ✨ مرة واحدة (آخر إصدار)
+  path_provider: ^2.1.1             
+  permission_handler: ^11.3.1       
   intl: ^0.18.1
   http_parser: ^4.0.2
+  just_audio: ^0.9.39
+  camera: ^0.10.5+9
 
 #           
 # Dev Dependencies
@@ -101,6 +103,9 @@ flutter:
     # Branding & Onboarding
     - assets/images/branding/
     - assets/images/onboarding/
+
+    # Mock interview icons 
+    - assets/images/mock_interview/
 
     # Home icons
     - assets/images/home_icons/
