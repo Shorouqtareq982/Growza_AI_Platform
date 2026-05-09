@@ -106,6 +106,8 @@ flutter:
 
     # Mock interview icons 
     - assets/images/mock_interview/
+    # Feature assets
+    - assets/images/career_build/
 
     # Home icons
     - assets/images/home_icons/
