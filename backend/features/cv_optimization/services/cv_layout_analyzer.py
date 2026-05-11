@@ -4,6 +4,8 @@ from typing import Dict, List, Optional, Set, Tuple, TypedDict
 
 import numpy as np
 import pymupdf
+import math
+from statistics import mean
 from docx import Document
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
@@ -200,8 +202,27 @@ class CVLayoutAnalyzer:
         num_of_doc_words = sum(len(text.split()) for text in all_text_content)
 
         # Convert to Pydantic objects
-        page_sizes_objs = [PageSize(**ps) for ps in page_sizes]
-        page_margins_objs = [PageMargin(**pm) for pm in page_margins]
+        # Ensure page size/margin data is complete; provide sensible defaults
+        def _safe_page_size(ps):
+            if not ps:
+                return PageSize(width=8.5, height=11.0)
+            try:
+                return PageSize(**ps)
+            except Exception:
+                return PageSize(width=8.5, height=11.0)
+
+        def _safe_page_margin(pm):
+            defaults = {"top": 1.0, "bottom": 1.0, "left": 1.0, "right": 1.0}
+            if not pm:
+                return PageMargin(**defaults)
+            try:
+                merged = {**defaults, **pm}
+                return PageMargin(**merged)
+            except Exception:
+                return PageMargin(**defaults)
+
+        page_sizes_objs = [_safe_page_size(ps) for ps in page_sizes]
+        page_margins_objs = [_safe_page_margin(pm) for pm in page_margins]
 
         extracted_text = CVLayoutAnalyzer._clean_text(page_texts)
 
@@ -263,20 +284,43 @@ class CVLayoutAnalyzer:
         # Extract fonts
         fonts = page.get_fonts()
         for font in fonts:
-            fonts_used.add(font[3])  # font name is at index 3
+            raw_font_name = font[3]  # font name is at index 3
+            # Remove PDF subset prefix like "BCDKEE+"
+            clean_name = re.sub(r"^[A-Z]{6}\+", "", raw_font_name)
+            # Normalize common names
+            clean_name = clean_name.replace("MT", "")
+            # Remove style suffixes
+            clean_name = re.sub(
+                r"-(Bold|Italic|BoldItalic|Regular|Oblique)$",
+                "",
+                clean_name,
+                flags=re.IGNORECASE
+            )
+            fonts_used.add(clean_name)
 
         # Check for columns (simple heuristic)
-        have_columns = CVLayoutAnalyzer._detect_pdf_columns(page)
+        column_centers = CVLayoutAnalyzer._detect_pdf_columns(page)
+        have_columns = column_centers is not None
 
         # Analyze text blocks
-        blocks = sorted(
-            page.get_text("rawdict")["blocks"],
-            key=lambda b: (b["bbox"][1], b["bbox"][0])
-        )
+        raw_blocks = page.get_text("rawdict")["blocks"]
+        text_blocks = [b for b in raw_blocks if b["type"] == 0]
+        
+        # Sort text blocks by column first for multi-column layouts
+        if have_columns and column_centers:
+            # Multi-column layout: sort by column first, then by Y position within column
+            text_blocks = CVLayoutAnalyzer._sort_blocks_by_columns(
+                text_blocks, column_centers
+            )
+        else:
+            # Single column or no columns: sort by Y position (top to bottom), then X (left to right)
+            text_blocks = sorted(
+                text_blocks,
+                key=lambda b: (b["bbox"][1], b["bbox"][0])
+            )
+        
         links = page.get_links()
-
         page_lines = []
-        text_blocks = [b for b in blocks if b["type"] == 0]
 
         # Collect font sizes
         all_font_sizes.extend(
@@ -353,10 +397,13 @@ class CVLayoutAnalyzer:
         }
 
     @staticmethod
-    def _detect_pdf_columns(page) -> bool:
-        """Detect if PDF page has multi-column layout.
+    def _detect_pdf_columns(page) -> Optional[List[float]]:
+        """Detect if PDF page has multi-column layout and return column centers.
         
         Uses simple heuristic: clustering of text x-positions to find column separation.
+        
+        Returns:
+            List of column center positions (sorted) if multi-column layout detected, None otherwise
         """
         blocks = page.get_text("dict")["blocks"]
         x_positions = [
@@ -372,8 +419,46 @@ class CVLayoutAnalyzer:
                           n_init=CVLayoutAnalyzer.KMEANS_INIT).fit(x_positions)
             centers = sorted(kmeans.cluster_centers_.flatten())
             if abs(centers[0] - centers[1]) > CVLayoutAnalyzer.COLUMN_SEPARATION_THRESHOLD:
-                return True
-        return False
+                return centers
+        return None
+
+    @staticmethod
+    def _sort_blocks_by_columns(
+        blocks: List[Dict], 
+        column_centers: List[float]
+    ) -> List[Dict]:
+        """Sort text blocks by column first, then by Y position within each column.
+        
+        For multi-column layouts (like two-column CVs), this ensures the entire
+        left column is read before the right column, rather than reading row-by-row.
+        
+        Args:
+            blocks: List of text blocks from PDF
+            column_centers: Sorted list of column center x-positions
+        
+        Returns:
+            Blocks sorted: column index (left to right), then Y position (top to bottom)
+        """
+        def get_column_index(block_x: float) -> int:
+            """Determine which column a block belongs to based on x position."""
+            if len(column_centers) < 2:
+                return 0
+            
+            # Find the column center closest to this block's x position
+            midpoint = (column_centers[0] + column_centers[1]) / 2
+            if block_x < midpoint:
+                return 0  # Left column
+            else:
+                return 1  # Right column
+        
+        # Sort by: column index first, then Y position within column
+        return sorted(
+            blocks,
+            key=lambda b: (
+                get_column_index(b["bbox"][0]),  # Column index (0 = left, 1 = right)
+                b["bbox"][1]                      # Y position (top to bottom)
+            )
+        )
 
     @staticmethod
     def _attach_links_once(page, page_text: str) -> str:
@@ -420,7 +505,6 @@ class CVLayoutAnalyzer:
         """
         valid_filename, _ = FileValidator.validate_filename(org_filename)
         valid_filename_length = len(org_filename) <= CVLayoutAnalyzer.MAX_FILENAME_LENGTH
-
         num_of_pages = CVLayoutAnalyzer._get_page_count_docx(doc)
         page_sizes, page_margins, have_columns = CVLayoutAnalyzer._extract_page_properties(doc, num_of_pages)
         content_data = CVLayoutAnalyzer._analyze_text_content(doc)
@@ -476,6 +560,15 @@ class CVLayoutAnalyzer:
         page_sizes = []
         page_margins = []
         have_columns = False
+
+        # DOCX page size and margins are stored in section properties.
+        # If the document exposes no usable section data, fall back to a standard page setup.
+        if not getattr(doc, "sections", None):
+            default_size = PageSize(width=8.5, height=11.0)
+            default_margin = PageMargin(top=1.0, bottom=1.0, left=1.0, right=1.0)
+            page_sizes = [default_size for _ in range(num_pages)]
+            page_margins = [default_margin for _ in range(num_pages)]
+            return page_sizes, page_margins, have_columns
 
         # Collect section properties
         section_properties = []
@@ -547,6 +640,13 @@ class CVLayoutAnalyzer:
                 if page_size:
                     page_sizes.append(page_size)
                 page_margins.append(margins)
+        elif len(section_properties) == 0:
+            # No section properties: use defaults
+            default_size = PageSize(width=8.5, height=11.0)
+            default_margin = PageMargin(top=1.0, bottom=1.0, left=1.0, right=1.0)
+            for _ in range(num_pages):
+                page_sizes.append(default_size)
+                page_margins.append(default_margin)
         else:
             # Multiple sections: estimate pages per section
             pages_per_section = max(1, num_pages // len(section_properties))
@@ -821,11 +921,14 @@ class CVLayoutAnalyzer:
                     final_text.append(para_text)
 
             elif isinstance(child, CT_Tbl):
-                for row in child.iter():
-                    for cell in row.iter():
-                        CVLayoutAnalyzer._extract_text_recursive(
-                            cell, doc, final_text, seen_uris
-                        )
+                # Extract text from table properly - iterate through paragraphs in table cells
+                for para in child.findall(f".//{CVLayoutAnalyzer.WPML_NS}p"):
+                    para_text = CVLayoutAnalyzer._get_text_from_element(para)
+                    para_text = CVLayoutAnalyzer._resolve_hyperlinks(
+                        para, doc, para_text, seen_uris
+                    )
+                    if para_text:
+                        final_text.append(para_text)
             else:
                 CVLayoutAnalyzer._extract_text_recursive(
                     child, doc, final_text, seen_uris
@@ -913,12 +1016,60 @@ class CVLayoutAnalyzer:
         
         Removes extra whitespace and joins non-empty lines.
         """
-        # cleaned = [
-        #     re.sub(r'\s+', ' ', line).strip()
-        #     for line in text_lines
-        #     if line.strip()
-        # ]
-        return "\n".join(text_lines)
+        cleaned = [
+            re.sub(r'[ \t]+', ' ', line).strip()
+            for line in text_lines
+            if line.strip()
+        ]
+
+        cleaned = "\n".join(text_lines)
+
+        replacements = {
+            "â€“": "–",   # en dash
+            "â€”": "—",   # em dash
+            "â€˜": "'",   # left single quote
+            "â€™": "'",   # right single quote
+            "â€œ": '"',   # left double quote
+            "â€": '"',   # right double quote
+            "Â ": " ",    # non-breaking space artifact
+            "Â": "",      # standalone stray marker
+            "ï¼": ":",    # full-width colon corruption
+            "ï½": ";",    # full-width semicolon corruption
+        }
+
+        for wrong, right in replacements.items():
+            cleaned = cleaned.replace(wrong, right)
+
+        BULLETS = r"[•●▪○◯◦◌⚫‣∙➢►▶◆◇■□✓✔➤]"
+        cleaned = re.sub(BULLETS, "-", cleaned)
+        # Capture the URL and reconstruct properly
+        def fix_broken_urls(text):
+            pattern = r'(\w+)?\s*([A-Za-z]+)?\s*\((https?://[^)]+)\)([A-Za-z0-9:/._-]+)?'
+
+            def repl(m):
+                prefix_word = m.group(1) or ""
+                left_part   = m.group(2) or ""
+                first_url   = m.group(3)
+                right_part  = m.group(4) or ""
+
+                # Case 1:
+                # U (url)demy  -> Udemy (url)
+                if right_part:
+                    merged = left_part + right_part
+                    return f"{prefix_word} {merged} ({first_url})"
+
+                return m.group(0)
+
+            return re.sub(pattern, repl, text)
+
+        cleaned = fix_broken_urls(cleaned)
+        cleaned = re.sub(r'[ \t]+', ' ', cleaned)  # Replace multiple spaces/tabs with single space
+        cleaned = re.sub(r'[\uE000-\uF8FF]', ' ', cleaned) # Remove Unicode Private Use Area chars
+        cleaned = cleaned.replace(" \n", "\n").replace("\n ", "\n")  # Clean spaces around newlines
+        cleaned = re.sub(r'\n{2,}', '\n\n', cleaned)  # Limit consecutive newlines
+        # cleaned = re.sub(r'\s+', ' ', cleaned)  # Remove extra whitespace
+        cleaned = re.sub(r'\n\s*-\s*\n', '\n- ', cleaned) # fix standalone bullet lines
+        return cleaned
 
     # ==================== Utility & Helper Methods ====================
 
@@ -927,9 +1078,111 @@ class CVLayoutAnalyzer:
         """Estimate page count from DOCX by counting page breaks.
         
         Note: DOCX does not store page count explicitly, so this is an estimate.
+        If the document contains no explicit page breaks, fall back to a
+        layout-based estimation using `_estimate_pages_from_docx`.
         """
-        page_count = sum(p.contains_page_break for p in doc.paragraphs) + 1
-        return page_count
+        page_count = 1
+        try:
+            page_count = sum(p.contains_page_break for p in doc.paragraphs) + 1
+            est = CVLayoutAnalyzer._estimate_pages_from_docx(doc)
+            return max(1, page_count, est)
+        except Exception:
+            return page_count
+
+    @staticmethod
+    def _estimate_pages_from_docx(doc: Document, page_height_in: float = 11.0) -> int:
+        """Estimate number of pages for a DOCX by simulating layout height.
+
+        This uses average section margins, average font size, paragraph
+        spacing, table rows, and images to approximate how many pages the
+        document would occupy for a given page height (in inches).
+        """
+        # SAFE SECTION HANDLING
+        if doc.sections:
+            top_margin = sum(s.top_margin.inches for s in doc.sections) / len(doc.sections)
+            bottom_margin = sum(s.bottom_margin.inches for s in doc.sections) / len(doc.sections)
+        else:
+            top_margin = 1.0
+            bottom_margin = 1.0
+
+        usable_height = page_height_in - (top_margin + bottom_margin)
+        if usable_height <= 0:
+            return 1
+
+        # FONT SIZE ESTIMATION
+        font_sizes = []
+        for p in doc.paragraphs:
+            for r in p.runs:
+                if r.font.size:
+                    try:
+                        font_sizes.append(r.font.size.pt)
+                    except Exception:
+                        pass
+
+        avg_font = mean(font_sizes) if font_sizes else 12
+        font_scale = (avg_font / 12)
+
+        # HEIGHT ACCUMULATION MODEL
+        total_height_units = 0.0
+
+        for para in doc.paragraphs:
+            text = (para.text or "").strip()
+            if not text:
+                continue
+
+            word_count = len(text.split())
+
+            # BASE LINE HEIGHT: assume ~0.2 inches per line at 12pt
+            line_height = 0.2 * font_scale
+
+            # estimate number of lines (rough average words per line)
+            words_per_line = 10
+            lines = max(1, word_count / words_per_line)
+
+            para_height = lines * line_height
+
+            # PARAGRAPH SPACING
+            space_before = getattr(para.paragraph_format, 'space_before', None)
+            space_after = getattr(para.paragraph_format, 'space_after', None)
+            sb = getattr(space_before, 'pt', 0) if space_before is not None else 0
+            sa = getattr(space_after, 'pt', 0) if space_after is not None else 0
+            spacing_height = ((sb + sa) / 72)
+
+            # HEADINGS (more spacing)
+            style_name = (para.style.name or "").lower() if para.style else ""
+            if "heading" in style_name:
+                para_height *= 1.6
+                spacing_height += 0.15
+
+            # LISTS
+            try:
+                if para._p.xpath(".//w:numPr"):
+                    para_height *= 1.2
+            except Exception:
+                pass
+
+            total_height_units += para_height + spacing_height
+
+        # TABLES (dense but tall blocks)
+        for table in doc.tables:
+            rows = len(table.rows)
+            table_height = rows * 0.35  # inches per row
+            total_height_units += table_height
+
+        # IMAGES (major page impact)
+        image_count = 0
+        try:
+            for rel in doc.part.rels.values():
+                if hasattr(rel, "target_ref") and "image" in rel.target_ref:
+                    image_count += 1
+        except Exception:
+            pass
+
+        total_height_units += image_count * 1.2
+
+        # FINAL PAGE ESTIMATION
+        estimated_pages = math.ceil(total_height_units / usable_height)
+        return max(1, int(estimated_pages))
 
     @staticmethod
     def _detect_section_breaks(doc: Document) -> Optional[List[int]]:
@@ -985,5 +1238,3 @@ class CVLayoutAnalyzer:
         if not text:
             return 0
         return len(text.split())
-    
-    

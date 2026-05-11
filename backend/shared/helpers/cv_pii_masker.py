@@ -54,7 +54,13 @@ def _get_detection_value(detection, key, default=None):
 # =========================================================
 def filter_entities(results, text, max_top_region=350):
     excluded = {"DATE_TIME","NRP"}
-    thresholds = {"URL": 0.6}
+    thresholds = {
+        "URL": 0.6,
+        "LINKEDIN_URL": 0.6,
+        "GITHUB_URL": 0.6,
+        "MEDIUM_URL": 0.6,
+        "DEVPOST_URL": 0.6
+    }
 
     top_end = min(get_top_region_end(text), max_top_region)
     filtered = []
@@ -118,6 +124,25 @@ def _trim_url_span(text, start, end):
     while end > start and text[end - 1] in ")]},.;:!?":
         end -= 1
     return start, end
+
+
+# =========================================================
+# Categorize URLs
+# =========================================================
+def categorize_url(url_text):
+    """Categorize URL into specific types (LinkedIn, GitHub, Medium, DevPost) or generic URL"""
+    url_lower = url_text.lower()
+    
+    if "linkedin" in url_lower:
+        return "LINKEDIN_URL"
+    elif "github" in url_lower:
+        return "GITHUB_URL"
+    elif "medium" in url_lower:
+        return "MEDIUM_URL"
+    elif "devpost" in url_lower:
+        return "DEVPOST_URL"
+    else:
+        return "URL"
 
 
 # =========================================================
@@ -286,6 +311,12 @@ def pii_pipeline(cv_text):
     # Step 1b: Fallback pattern-based detection
     pattern_results = pattern_based_detection(cv_text)
     results = merge_detections(results, pattern_results)
+
+    # Step 1c: Categorize URLs
+    for r in results:
+        if r["entity_type"] == "URL":
+            url_text = cv_text[r["start"]:r["end"]]
+            r["entity_type"] = categorize_url(url_text)
 
     # Step 2: Filter
     results = filter_entities(results, cv_text)
