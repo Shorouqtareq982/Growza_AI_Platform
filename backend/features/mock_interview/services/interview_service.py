@@ -12,7 +12,7 @@ from azure.storage.blob import BlobClient, BlobSasPermissions, generate_blob_sas
 from fastapi import HTTPException
 
 from core.config import settings
-from features.mock_interview.ml_model import behavioral_pipeline, technical_pipeline
+from features.mock_interview.ml_model import behavioral_pipeline
 from features.mock_interview.repositories.mock_interview_repository import MockInterviewRepository
 from features.mock_interview.services.assemblyai_service import AssemblyAIService
 from features.mock_interview.services.behavioral_report_service import BehavioralReportService
@@ -34,17 +34,27 @@ class MockInterviewService:
         self.behavioral_reports = BehavioralReportService(self.gemini, self.prompts_dir)
         self.technical_reports = TechnicalReportService(self.gemini, self.prompts_dir)
 
-    async def start_session(self, role_name: str, user_id: UUID) -> Dict[str, Any]:
+    # ------------------------------------------------------------------ #
+    #  Session creation                                                    #
+    # ------------------------------------------------------------------ #
+
+    async def start_behavioral_session(self, role_name: str, user_id: UUID) -> Dict[str, Any]:
         role = await self.repo.get_role_by_name(role_name)
         if not role:
             raise HTTPException(status_code=404, detail="Role not found")
 
-        session = await self.repo.create_session(user_id=user_id, role_id=UUID(role["role_id"]))
+        session = await self.repo.create_session(
+            user_id=user_id,
+            role_id=UUID(role["role_id"]),
+            session_type="behavioral",
+        )
         if not session:
             raise HTTPException(status_code=500, detail="Failed to create session")
 
         questions = await self.repo.list_behavioral_questions(role_name)
-        sas_token, blob_url, sas_expires_at = await self._create_video_upload_sas(UUID(session["session_id"]))
+        sas_token, blob_url, sas_expires_at = await self._create_video_upload_sas(
+            UUID(session["session_id"])
+        )
 
         return {
             "session_id": UUID(session["session_id"]),
@@ -54,62 +64,49 @@ class MockInterviewService:
             "sas_expires_at": sas_expires_at,
         }
 
+    async def start_technical_session(self, role_name: str, user_id: UUID) -> Dict[str, Any]:
+        role = await self.repo.get_role_by_name(role_name)
+        if not role:
+            raise HTTPException(status_code=404, detail="Role not found")
+
+        session = await self.repo.create_session(
+            user_id=user_id,
+            role_id=UUID(role["role_id"]),
+            session_type="technical",
+        )
+        if not session:
+            raise HTTPException(status_code=500, detail="Failed to create session")
+
+        questions = await self.repo.list_technical_questions(UUID(role["role_id"]))
+        sas_token, blob_url, sas_expires_at = await self._create_audio_upload_sas(
+            UUID(session["session_id"])
+        )
+
+        return {
+            "session_id": UUID(session["session_id"]),
+            "questions": questions,
+            "sas_token": sas_token,
+            "blob_url": blob_url,
+            "sas_expires_at": sas_expires_at,
+        }
+
+    # ------------------------------------------------------------------ #
+    #  Audio TTS                                                           #
+    # ------------------------------------------------------------------ #
+
     async def get_question_audio_bytes(self, question_id: UUID) -> bytes:
         question_text = await self.repo.get_question_text(question_id)
         if not question_text:
             raise HTTPException(status_code=404, detail="Question not found")
-
         try:
             return self.tts.synthesize(question_text)
         except Exception as e:
             logger.error(f"ElevenLabs TTS failed: {e}", exc_info=True)
             raise HTTPException(status_code=502, detail="ElevenLabs TTS failed")
 
-    async def process_behavioral_upload(self, session_id: UUID, blob_url: str) -> None:
-        try:
-            session = await self.repo.get_session(session_id)
-            if not session:
-                logger.warning("Session not found for behavioral processing")
-                return
-
-            await self._safe_update_session_status(session_id, "processing")
-
-            role_name = None
-            try:
-                role = await self.repo.get_role_by_id(UUID(session["role_id"]))
-                if role:
-                    role_name = role.get("role_name")
-            except Exception as e:
-                logger.warning(f"Failed to resolve role for session: {e}")
-
-            await self._wait_for_blob_ready(blob_url)
-
-            video_bytes = await self._download_blob_bytes(blob_url)
-            metrics = await asyncio.to_thread(self._run_behavioral_pipeline, video_bytes)
-            report = await self.behavioral_reports.build_report(metrics, role_name=role_name)
-            await self.repo.upsert_behavioral_analysis(
-                session_id=session_id,
-                analysis_metrics=metrics,
-                behavioral_report=report,
-            )
-
-            transcript_payload = metrics.get("transcript_payload")
-            if transcript_payload:
-                await self._store_transcript_payload(session, transcript_payload)
-                if settings.GEMINI_REQUEST_DELAY_SECONDS > 0:
-                    await asyncio.sleep(settings.GEMINI_REQUEST_DELAY_SECONDS)
-                await self.process_technical_analysis(
-                    session_id=session_id,
-                    response_payload=json.dumps(transcript_payload),
-                )
-            else:
-                logger.warning("Transcript payload missing; skipping technical analysis")
-
-            await self._safe_update_session_status(session_id, "finished")
-            await self._safe_delete_blob(blob_url)
-        except Exception:
-            await self._safe_update_session_status(session_id, "failed")
-            logger.exception("Behavioral analysis background task failed")
+    # ------------------------------------------------------------------ #
+    #  Behavioral pipeline — upload → process → delete blob               #
+    # ------------------------------------------------------------------ #
 
     async def queue_behavioral_upload(
         self,
@@ -119,67 +116,190 @@ class MockInterviewService:
         poll_interval_seconds: int = 5,
         min_size_bytes: int = 1024,
     ) -> None:
-        await self._safe_update_session_status(session_id, "uploading")
-
+        """
+        Called as a background task from the notify-upload endpoint.
+        Polls until the blob is ready, then hands off to the processing method.
+        The blob is always deleted when processing finishes (success or failure).
+        Status is NOT set here — claim_session_for_processing is the single
+        place that transitions the session to in_progress, keeping the duplicate
+        guard reliable.
+        """
         deadline = datetime.utcnow().timestamp() + max_wait_seconds
         while datetime.utcnow().timestamp() < deadline:
             if await self._is_blob_ready(blob_url, min_size_bytes=min_size_bytes):
-                await self._safe_update_session_status(session_id, "uploaded")
-                await self.process_behavioral_upload(session_id, blob_url)
+                await self._process_behavioral_upload(session_id, blob_url)
                 return
             await asyncio.sleep(poll_interval_seconds)
 
-        await self._safe_update_session_status(session_id, "failed")
-        logger.warning("Blob not available before timeout; marking session failed")
+        # Blob never became ready — leave session as pending so the user can retry
+        logger.warning("Behavioral blob not available before timeout; session left as pending")
 
-    async def process_technical_analysis(self, session_id: UUID, response_payload: Optional[str] = None) -> str:
-        session = await self.repo.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        role = await self.repo.get_role_by_id(UUID(session["role_id"]))
-        if not role:
-            raise HTTPException(status_code=404, detail="Role not found")
-
-        questions = await self.repo.list_behavioral_questions(role["role_name"])
-        question_ids = [UUID(item["question_id"]) for item in questions[:7]]
-
-        if len(question_ids) < 7:
-            raise HTTPException(status_code=400, detail="Insufficient questions for technical analysis")
-
-        if response_payload is None:
-            transcript_row = await self.repo.get_latest_response_for_user(UUID(session["user_id"]))
-            if not transcript_row or not transcript_row.get("response"):
-                raise HTTPException(status_code=404, detail="Transcript not found")
-            response_payload = transcript_row["response"]
-
-        response_payload_text = cast(str, response_payload)
-
-        full_transcript_text = technical_pipeline.extract_full_transcript_text(response_payload_text)
+    async def _process_behavioral_upload(self, session_id: UUID, blob_url: str) -> None:
+        """
+        Downloads the video, runs the behavioral pipeline, saves results,
+        then deletes the blob from Azure. Does NOT call the technical pipeline.
+        """
         try:
-            technical_pipeline.validate_full_transcript_text(full_transcript_text)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            session = await self.repo.get_session(session_id)
+            if not session:
+                logger.warning("Behavioral: session not found, skipping")
+                return
 
-        await self.repo.insert_session_response(
-            user_id=UUID(session["user_id"]),
-            question_id=question_ids[0],
-            response=full_transcript_text,
-        )
+            claimed = await self.repo.claim_session_for_processing(session_id)
+            if not claimed:
+                logger.info("Behavioral: session already in_progress/completed, skipping duplicate run")
+                return
 
+            role_name = None
+            try:
+                role = await self.repo.get_role_by_id(UUID(session["role_id"]))
+                if role:
+                    role_name = role.get("role_name")
+            except Exception as e:
+                logger.warning(f"Behavioral: failed to resolve role: {e}")
+
+            video_bytes = await self._download_blob_bytes(blob_url)
+            metrics = await asyncio.to_thread(self._run_behavioral_pipeline, video_bytes)
+
+            behavioral_metrics = self._extract_behavioral_metrics(metrics)
+            report = await self.behavioral_reports.build_report(
+                behavioral_metrics, role_name=role_name
+            )
+            transcript_text = cast(str, metrics.get("transcript") or "")
+            behavioral_score = self._extract_score(behavioral_metrics)
+
+            await self.repo.upsert_behavioral_analysis(
+                session_id=session_id,
+                analysis_metrics=behavioral_metrics,
+                behavioral_report=report,
+                transcript=transcript_text,
+                video_url=None,          # blob will be deleted; don't store a dead URL
+                score=behavioral_score,
+            )
+
+            await self._safe_update_session_status(session_id, "completed")
+            logger.info(f"Behavioral pipeline completed for session {session_id}")
+
+        except Exception:
+            await self._safe_update_session_status(session_id, "pending")
+            logger.exception(f"Behavioral pipeline failed for session {session_id}")
+
+        finally:
+            # Always delete the blob — whether processing succeeded or failed
+            deleted = await self._safe_delete_blob(blob_url)
+            # Explicitly log/print that the pipeline finished and deletion attempted
+            logger.info(f"Behavioral pipeline finished for session {session_id}; blob deleted: {deleted}")
+            print(f"Behavioral pipeline finished for session {session_id}; blob deleted: {deleted}")
+
+    # ------------------------------------------------------------------ #
+    #  Technical pipeline — upload → process → delete blob                #
+    # ------------------------------------------------------------------ #
+
+    async def queue_technical_upload(
+        self,
+        session_id: UUID,
+        blob_url: str,
+        max_wait_seconds: int = 120,
+        poll_interval_seconds: int = 5,
+        min_size_bytes: int = 1024,
+    ) -> None:
+        """
+        Called as a background task from the technical notify-upload endpoint.
+        Polls until the blob is ready, then hands off to the processing method.
+        The blob is always deleted when processing finishes (success or failure).
+        Status is NOT set here — claim_session_for_processing is the single
+        place that transitions the session to in_progress, keeping the duplicate
+        guard reliable.
+        """
+        deadline = datetime.utcnow().timestamp() + max_wait_seconds
+        while datetime.utcnow().timestamp() < deadline:
+            if await self._is_blob_ready(blob_url, min_size_bytes=min_size_bytes):
+                await self._process_technical_upload(session_id, blob_url)
+                return
+            await asyncio.sleep(poll_interval_seconds)
+
+        # Blob never became ready — leave session as pending so the user can retry
+        logger.warning("Technical blob not available before timeout; session left as pending")
+
+    async def _process_technical_upload(self, session_id: UUID, blob_url: str) -> None:
+        """
+        Downloads the audio, transcribes it, extracts audio/text metrics,
+        generates the technical report, saves results, then deletes the blob.
+        Does NOT call the behavioral pipeline.
+        """
         try:
-            questions_text = technical_pipeline.build_questions_text(questions, limit=7)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            session = await self.repo.get_session(session_id)
+            if not session:
+                logger.warning("Technical: session not found, skipping")
+                return
 
-        report = await self.technical_reports.build_report_smart(
-            questions_text=questions_text,
-            full_transcript=full_transcript_text,
-            role_name=role.get("role_name") or "the role",
-        )
+            claimed = await self.repo.claim_session_for_processing(session_id)
+            if not claimed:
+                logger.info("Technical: session already in_progress/completed, skipping duplicate run")
+                return
 
-        await self.repo.upsert_technical_analysis(session_id=session_id, technical_report=report)
-        return report
+            role = await self.repo.get_role_by_id(UUID(session["role_id"]))
+            if not role:
+                logger.error(f"Technical: role not found for session {session_id}")
+                await self._safe_update_session_status(session_id, "pending")
+                return
+
+            questions = await self.repo.list_technical_questions(UUID(session["role_id"]))
+            if len(questions) < 5:
+                logger.error(f"Technical: insufficient questions for session {session_id}")
+                await self._safe_update_session_status(session_id, "pending")
+                return
+
+            audio_bytes = await self._download_blob_bytes(blob_url)
+            transcript_text = await asyncio.to_thread(
+                self._transcribe_audio_bytes, audio_bytes
+            )
+
+            if not transcript_text or not transcript_text.strip():
+                raise RuntimeError("Transcription returned empty text")
+
+            role_requirements = (
+                role.get("role_requirements")
+                or role.get("requirements")
+                or role.get("role_description")
+                or role.get("description")
+                or ""
+            )
+            questions_list = [q.get("question_text", "") for q in questions]
+            metrics = await asyncio.to_thread(
+                self._run_technical_audio_metrics, audio_bytes, transcript_text
+            )
+            report = await self.technical_reports.build_report(
+                role_requirements=role_requirements,
+                questions=questions_list,
+                user_response=transcript_text,
+                metrics=metrics,
+                role_name=role.get("role_name") or "the role",
+            )
+
+            await self.repo.upsert_technical_analysis(
+                session_id=session_id,
+                technical_report=report,
+                transcript=transcript_text,
+                video_url=None,          # blob will be deleted; don't store a dead URL
+            )
+
+            await self._safe_update_session_status(session_id, "completed")
+            logger.info(f"Technical pipeline completed for session {session_id}")
+
+        except Exception:
+            await self._safe_update_session_status(session_id, "pending")
+            logger.exception(f"Technical pipeline failed for session {session_id}")
+
+        finally:
+            # Always delete the blob — whether processing succeeded or failed
+            deleted = await self._safe_delete_blob(blob_url)
+            logger.info(f"Technical pipeline finished for session {session_id}; blob deleted: {deleted}")
+            print(f"Technical pipeline finished for session {session_id}; blob deleted: {deleted}")
+
+    # ------------------------------------------------------------------ #
+    #  Read results                                                        #
+    # ------------------------------------------------------------------ #
 
     async def get_analysis(self, session_id: UUID) -> Dict[str, Any]:
         analysis = await self.repo.get_session_analysis(session_id)
@@ -193,10 +313,36 @@ class MockInterviewService:
             raise HTTPException(status_code=404, detail="Session not found")
         return session.get("status") or "unknown"
 
+    # ------------------------------------------------------------------ #
+    #  Azure blob helpers                                                  #
+    # ------------------------------------------------------------------ #
+
     async def _create_video_upload_sas(self, session_id: UUID) -> tuple[str, str, datetime]:
         try:
             storage = get_azure_storage_provider(container_name=settings.AZURE_CONTAINER_NAME)
-            blob_name = f"{session_id}.mp4"
+            blob_name = f"behavioral/video/{session_id}.mp4"
+            blob_client = storage.blob_service_client.get_blob_client(
+                container=storage.container_name,
+                blob=blob_name,
+            )
+            expires_at = datetime.utcnow() + timedelta(hours=1)
+            sas_token = generate_blob_sas(
+                account_name=storage.blob_service_client.account_name,
+                container_name=storage.container_name,
+                blob_name=blob_name,
+                account_key=storage.blob_service_client.credential.account_key,
+                permission=BlobSasPermissions(write=True, create=True),
+                expiry=expires_at,
+            )
+            return sas_token, blob_client.url, expires_at
+        except Exception as e:
+            logger.error(f"Azure SAS generation failed: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to generate upload SAS token")
+
+    async def _create_audio_upload_sas(self, session_id: UUID) -> tuple[str, str, datetime]:
+        try:
+            storage = get_azure_storage_provider(container_name=settings.AZURE_CONTAINER_NAME)
+            blob_name = f"technical/audio/{session_id}.mp3"
             blob_client = storage.blob_service_client.get_blob_client(
                 container=storage.container_name,
                 blob=blob_name,
@@ -224,20 +370,6 @@ class MockInterviewService:
             logger.error(f"Azure blob download failed: {e}", exc_info=True)
             raise
 
-    async def verify_blob_ready(self, blob_url: str, min_size_bytes: int = 1) -> None:
-        try:
-            credential = settings.STORAGE_ACCOUNT_KEY or None
-            blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
-            props = blob_client.get_blob_properties()
-            size = getattr(props, "size", None)
-            if size is None or size < min_size_bytes:
-                raise HTTPException(status_code=400, detail="Blob not ready or empty")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Blob verification failed: {e}")
-            raise HTTPException(status_code=404, detail="Blob not found") from e
-
     async def _is_blob_ready(self, blob_url: str, min_size_bytes: int = 1) -> bool:
         try:
             credential = settings.STORAGE_ACCOUNT_KEY or None
@@ -251,15 +383,16 @@ class MockInterviewService:
 
     async def _safe_delete_blob(self, blob_url: str) -> None:
         try:
-            blob_client = BlobClient.from_blob_url(blob_url, credential=settings.STORAGE_ACCOUNT_KEY or None)
-            blob_name = blob_client.blob_name
-            if not blob_name:
-                logger.warning("Blob name missing from url; skipping delete")
-                return
-            storage = get_azure_storage_provider(container_name=settings.AZURE_CONTAINER_NAME)
-            storage.delete_file(blob_name)
+            credential = settings.STORAGE_ACCOUNT_KEY or None
+            blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
+            blob_client.delete_blob(delete_snapshots="include")
+            logger.info(f"Blob deleted successfully: {blob_client.blob_name}")
+            print(f"Blob deleted successfully: {blob_client.blob_name}")
+            return True
         except Exception as e:
-            logger.warning(f"Failed to delete blob: {e}")
+            logger.error(f"Failed to delete blob '{blob_url}': {e}", exc_info=True)
+            print(f"Failed to delete blob '{blob_url}': {e}")
+            return False
 
     async def _safe_update_session_status(self, session_id: UUID, status: str) -> None:
         try:
@@ -267,35 +400,50 @@ class MockInterviewService:
         except Exception as e:
             logger.warning(f"Failed to update session status: {e}")
 
-    async def _wait_for_blob_ready(
-        self,
-        blob_url: str,
-        max_wait_seconds: int = 120,
-        poll_interval_seconds: int = 5,
-        min_size_bytes: int = 1024,
-    ) -> None:
-        deadline = datetime.utcnow().timestamp() + max_wait_seconds
-        last_size = 0
-        while datetime.utcnow().timestamp() < deadline:
-            try:
-                credential = settings.STORAGE_ACCOUNT_KEY or None
-                blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
-                props = blob_client.get_blob_properties()
-                size = getattr(props, "size", None)
-                if size is not None and size >= min_size_bytes:
-                    if size == last_size:
-                        return
-                    last_size = size
-            except Exception as e:
-                logger.debug(f"Blob readiness check failed: {e}")
-            await asyncio.sleep(poll_interval_seconds)
+    # ------------------------------------------------------------------ #
+    #  ML pipeline runners (sync — called via asyncio.to_thread)          #
+    # ------------------------------------------------------------------ #
+
+    def _transcribe_video_bytes(self, video_bytes: bytes) -> str:
+        """Write bytes to a temp file, transcribe, return plain text."""
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
+                f.write(video_bytes)
+                temp_path = f.name
+            transcript_text, _ = self.transcriber.transcribe_video_file(
+                temp_path,
+                max_wait_seconds=900,
+                poll_interval_seconds=5,
+            )
+            return transcript_text or ""
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def _transcribe_audio_bytes(self, audio_bytes: bytes) -> str:
+        """Write bytes to a temp file, transcribe, return plain text."""
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+                f.write(audio_bytes)
+                temp_path = f.name
+            transcript_text, _ = self.transcriber.transcribe_video_file(
+                temp_path,
+                max_wait_seconds=900,
+                poll_interval_seconds=5,
+            )
+            return transcript_text or ""
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
 
     def _run_behavioral_pipeline(self, video_bytes: bytes) -> Dict[str, Any]:
         temp_path = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
-                temp_file.write(video_bytes)
-                temp_path = temp_file.name
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
+                f.write(video_bytes)
+                temp_path = f.name
 
             device = behavioral_pipeline.torch.device(
                 "cuda" if behavioral_pipeline.torch.cuda.is_available() else "cpu"
@@ -321,82 +469,58 @@ class MockInterviewService:
             )
             if not transcript_text or not transcript_words:
                 raise RuntimeError("Transcription failed or missing word timestamps")
+
             predictions, transcript_text, transcript_words = behavioral_pipeline.predict_video(
                 temp_path,
-                visual,
-                audio,
-                text,
-                baseline,
-                siamese,
-                final,
-                vocab,
-                nlp,
-                smile,
-                audio_mins,
-                audio_denom,
-                device,
+                visual, audio, text, baseline, siamese, final,
+                vocab, nlp, smile, audio_mins, audio_denom, device,
                 transcript_text=transcript_text,
                 transcript_words=transcript_words,
             )
 
-            visual_metrics = behavioral_pipeline.extract_visual_metrics(temp_path)
-            audio_metrics = behavioral_pipeline.extract_audio_metrics(temp_path)
-            text_metrics = behavioral_pipeline.extract_text_metrics(transcript_text)
-            transcript_payload = {
-                "text": transcript_text or "",
-                "words": transcript_words or [],
-            }
-
             return {
-                "predictions": predictions,
-                "visual_metrics": visual_metrics,
-                "audio_metrics": audio_metrics,
-                "text_metrics": text_metrics,
-                "transcript": transcript_text or "",
-                "transcript_payload": transcript_payload,
+                "predictions":    predictions,
+                "visual_metrics": behavioral_pipeline.extract_visual_metrics(temp_path),
+                "audio_metrics":  behavioral_pipeline.extract_audio_metrics(temp_path),
+                "text_metrics":   behavioral_pipeline.extract_text_metrics(transcript_text),
+                "transcript":     transcript_text or "",
             }
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
 
-    def _load_prompt(self, filename: str) -> str:
-        prompt_path = self.prompts_dir / filename
-        if not prompt_path.exists():
-            raise HTTPException(status_code=500, detail=f"Prompt file missing: {filename}")
-        return prompt_path.read_text(encoding="utf-8")
-
-    async def _store_transcript_payload(self, session: Dict[str, Any], transcript_payload: Dict[str, Any]) -> None:
+    def _run_technical_audio_metrics(self, audio_bytes: bytes, transcript_text: str) -> Dict[str, Any]:
+        temp_path = None
         try:
-            role = await self.repo.get_role_by_id(UUID(session["role_id"]))
-            if not role:
-                logger.warning("Role not found for transcript storage")
-                return
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+                f.write(audio_bytes)
+                temp_path = f.name
 
-            questions = await self.repo.list_behavioral_questions(role["role_name"])
-            if not questions:
-                logger.warning("No questions found for transcript storage")
-                return
+            return {
+                "audio_metrics": behavioral_pipeline.extract_audio_metrics(temp_path) or {},
+                "text_metrics": behavioral_pipeline.extract_text_metrics(transcript_text) or {},
+            }
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
 
-            question_id = UUID(questions[0]["question_id"])
-            await self.repo.insert_session_response(
-                user_id=UUID(session["user_id"]),
-                question_id=question_id,
-                response=json.dumps(transcript_payload),
-            )
-        except Exception as e:
-            logger.warning(f"Failed to store transcript payload: {e}")
+    # ------------------------------------------------------------------ #
+    #  Internal helpers                                                    #
+    # ------------------------------------------------------------------ #
 
-    async def _get_latest_valid_transcript_response(self, user_id: UUID) -> str:
-        responses = await self.repo.list_responses_for_user(user_id=user_id)
-        for response in responses:
-            payload = response.get("response")
-            if not isinstance(payload, str):
-                continue
-            try:
-                text = technical_pipeline.extract_full_transcript_text(payload)
-                technical_pipeline.validate_full_transcript_text(text)
-                return payload
-            except ValueError:
-                continue
+    def _extract_behavioral_metrics(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "predictions":    metrics.get("predictions") or {},
+            "visual_metrics": metrics.get("visual_metrics") or {},
+            "audio_metrics":  metrics.get("audio_metrics") or {},
+            "text_metrics":   metrics.get("text_metrics") or {},
+        }
 
-        raise ValueError("No valid transcript response found for user")
+    def _extract_score(self, metrics: Dict[str, Any]) -> Optional[float]:
+        predictions = metrics.get("predictions")
+        if not isinstance(predictions, dict):
+            return None
+        values = [float(v) for v in predictions.values() if isinstance(v, (int, float))]
+        if not values:
+            return None
+        return float(sum(values) / len(values))

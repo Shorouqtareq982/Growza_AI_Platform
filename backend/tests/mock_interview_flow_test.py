@@ -30,7 +30,7 @@ def _auth_headers() -> dict:
 def _start_session() -> dict:
     payload = {"role_name": ROLE_NAME}
     response = requests.post(
-        f"{API_BASE_URL}/mock-interview/sessions/start",
+        f"{API_BASE_URL}/mock-interview/sessions/start/behavioral",
         headers={**_auth_headers(), "Content-Type": "application/json"},
         data=json.dumps(payload),
         timeout=60,

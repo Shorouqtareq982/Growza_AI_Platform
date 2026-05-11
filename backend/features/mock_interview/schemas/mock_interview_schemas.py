@@ -23,6 +23,14 @@ class StartSessionResponse(BaseModel):
     sas_expires_at: datetime
 
 
+class TechnicalStartSessionResponse(BaseModel):
+    session_id: UUID
+    questions: List[QuestionItem]
+    sas_token: str
+    blob_url: str
+    sas_expires_at: datetime
+
+
 class NotifyUploadRequest(BaseModel):
     session_id: UUID
     blob_url: str
@@ -51,6 +59,12 @@ class TechnicalReportResponse(BaseModel):
     analysis_id: UUID
     technical_report: Optional[str] = None
     analyzed_at: datetime
+
+
+class BehavioralGeminiFeedback(BaseModel):
+    strengths: str
+    weaknesses: str
+    suggestions: str
 
 
 class GeminiFeedback(BaseModel):

@@ -1,49 +1,52 @@
-You are an expert technical interviewer evaluating a candidate for a [Insert Job Title] position.
+You are an expert technical interviewer evaluating a candidate for a {{ROLE_NAME}} position.
 
-Your task has two steps:
-1. Intelligently match segments of the transcript to each question (the candidate may not have answered in order, may have paused, or answered multiple questions in one flow).
-2. Evaluate the technical accuracy and depth of each matched answer.
+Compare the role requirements, the questions asked for this role, the candidate's response, and the audio/text metrics.
 
 ---
 
-QUESTIONS ASKED (in order):
+ROLE REQUIREMENTS:
+{{ROLE_REQUIREMENTS}}
+
+---
+
+QUESTIONS ASKED:
 {{QUESTIONS}}
 
 ---
 
-FULL TRANSCRIPT:
+USER RESPONSE:
 """
-{{TRANSCRIPT}}
+{{USER_RESPONSE}}
 """
 
 ---
 
-EVALUATION INSTRUCTIONS:
-
-- Match each question to the most relevant part of the transcript using context and keywords.
-- If a question has no matching answer in the transcript, mark it as skipped.
-- Judge only on technical correctness and depth — do not penalize for speaking style or filler words.
-- Do not invent answers the candidate did not give.
-- Do not award credit for vague or incorrect statements.
-- Be specific: reference the actual concepts the candidate mentioned, not generic praise or criticism.
+METRICS:
+{{METRICS_JSON}}
 
 ---
 
-OUTPUT FORMAT:
-Return a JSON object with this exact structure. No markdown, no code blocks, no preamble — raw JSON only:
+WRITING RULES - FOLLOW STRICTLY:
 
-{
-  "job_title": "<the job title being evaluated for>",
-  "overall_technical_score": <integer 0–100>,
-  "question_breakdown": [
-    {
-      "question": "<the original question>",
-      "matched_answer": "<the relevant portion of the transcript you matched to this question>",
-      "score": <integer 0–10>,
-      "assessment": "<1–2 sentences on correctness and depth>"
-    }
-  ],
-  "strengths": "<technical concepts the candidate answered correctly and thoroughly>",
-  "weaknesses": "<mistakes, missing knowledge, or questions they completely skipped>",
-  "suggestions": "<2–3 concrete, actionable steps to improve their technical knowledge>"
-}
+1. Do NOT include any raw numbers, scores, percentages, or JSON in the report.
+2. Do NOT output JSON, code blocks, or structured data formats.
+3. Do NOT include numeric ratings; describe levels with words such as "beginner", "familiar", "competent", "experienced", or "advanced".
+4. Focus on technical correctness and depth; do not comment on speaking style.
+5. Use audio/text metrics only to support clarity, structure, and completeness (avoid personality traits).
+6. Each bullet should be one concise coaching point, not a paragraph.
+
+---
+
+OUTPUT FORMAT (EXACTLY THIS, NO EXTRA SECTIONS):
+
+**Strengths**
+- <strength 1>
+- <strength 2>
+
+**Weaknesses**
+- <weakness 1>
+- <weakness 2>
+
+**Suggestions**
+- <suggestion 1>
+- <suggestion 2>

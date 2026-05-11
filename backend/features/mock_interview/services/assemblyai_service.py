@@ -52,6 +52,7 @@ class AssemblyAIService:
             "audio_url": audio_url,
             "language_detection": True,
             "punctuate": True,
+            "translate": True,
             "speech_models": ["universal-3-pro", "universal-2"],
         }
         transcript_response = requests.post(
