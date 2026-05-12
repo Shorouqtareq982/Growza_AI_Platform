@@ -140,3 +140,4 @@ if __name__ == "__main__":
         webbrowser.open("http://localhost:8000/api/v1/market/")
     Timer(1.5, open_browser).start()
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    
