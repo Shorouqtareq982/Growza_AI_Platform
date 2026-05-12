@@ -16,6 +16,8 @@ import '../../../resume_optimization/presentation/widgets/analysis_pending_dialo
 import '../../domain/entities/job_entity.dart';
 import '../providers/job_matching_provider.dart';
 import '../widgets/job_matching_dialogs.dart';
+import '../../../mock_interview/data/datasources/interview_roles.dart';
+import '../../../mock_interview/presentation/widgets/mock_interview_dialogs.dart';
 
 class JobDetailsScreen extends ConsumerStatefulWidget {
   final JobEntity job;
@@ -116,9 +118,14 @@ class _JobDetailsScreenState extends ConsumerState<JobDetailsScreen> {
   void _handleMockInterview() {
     showDialog(
       context: context,
-      barrierDismissible: true,
-      builder: (_) => AiInterviewConfirmDialog(
-        onStartInterview: () => context.push('/mock-interview'),
+      builder: (_) => SelectJobDialog(
+        prefilledJobTitle: widget.job.title,
+        onStart: (roleName, roleId) {
+          context.push('/interview-session', extra: {
+            'roleName': roleName,
+            'roleId': roleId,
+          });
+        },
       ),
     );
   }
