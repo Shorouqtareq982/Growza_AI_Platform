@@ -46,7 +46,6 @@ Pillow
 # ===============================
 scikit-learn
 google-genai
-openai-whisper
 
 # ===============================
 # Mock Interview ML (Inference + Notebooks)
@@ -70,6 +69,8 @@ seaborn
 python-dateutil
 typing-extensions
 language-tool-python
+deep-translator
+faster-whisper
 celery
 redis
 
