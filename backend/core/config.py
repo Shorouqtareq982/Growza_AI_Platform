@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     AZURE_AUDIO_CONTAINER_NAME: str = ""
     STORAGE_ACCOUNT_NAME: str = ""
     STORAGE_ACCOUNT_KEY: str = ""
+    
+    # Firebase
+    FIREBASE_CREDENTIALS_PATH: str = ""
 
     # Cloudinary
     CLOUDINARY_CLOUD_NAME: str = ""

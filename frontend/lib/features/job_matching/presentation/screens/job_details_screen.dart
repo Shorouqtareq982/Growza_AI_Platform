@@ -18,6 +18,7 @@ import '../providers/job_matching_provider.dart';
 import '../widgets/job_matching_dialogs.dart';
 import '../../../mock_interview/data/datasources/interview_roles.dart';
 import '../../../mock_interview/presentation/widgets/mock_interview_dialogs.dart';
+import '../../../mock_interview/domain/entities/interview_entities.dart';
 
 class JobDetailsScreen extends ConsumerStatefulWidget {
   final JobEntity job;
@@ -120,10 +121,11 @@ class _JobDetailsScreenState extends ConsumerState<JobDetailsScreen> {
       context: context,
       builder: (_) => SelectJobDialog(
         prefilledJobTitle: widget.job.title,
-        onStart: (roleName, roleId) {
+        onStart: (roleName, roleId, sessionType) {
           context.push('/interview-session', extra: {
             'roleName': roleName,
             'roleId': roleId,
+            'sessionType': sessionType,
           });
         },
       ),

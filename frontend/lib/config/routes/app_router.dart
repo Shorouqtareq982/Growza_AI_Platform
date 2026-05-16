@@ -76,6 +76,7 @@ import '../../features/job_matching/domain/entities/job_entity.dart';
 import '../../features/mock_interview/presentation/screens/interview_feedback_screen.dart';
 import '../../features/mock_interview/presentation/screens/interview_feedback_detail_screen.dart';
 import '../../features/mock_interview/presentation/screens/interview_session_screen.dart';
+import '../../features/mock_interview/domain/entities/interview_entities.dart';
 
 Widget _withAuthTheme(BuildContext context, Widget child) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -95,6 +96,25 @@ class AppRouter {
       final currentPath = state.uri.path;
       final currentFragment = state.uri.fragment;
       final fullLocation = state.uri.toString();
+
+      final protectedAppRoutes = <String>[
+        '/alerts',
+        '/interview-feedback-detail',
+        '/career-build',
+        '/mock-interview',
+        '/resume-optimization',
+        '/market-insights',
+        '/ai-portfolio',
+        '/settings',
+        '/personal-info',
+        '/change-password',
+        '/jobs',
+        '/home',
+      ];
+
+      if (protectedAppRoutes.any((r) => currentPath.startsWith(r))) {
+        return null;
+      }
 
       final normalizedFragmentPath = currentFragment.startsWith('/')
           ? currentFragment.split('?').first
@@ -515,6 +535,8 @@ class AppRouter {
           return InterviewSessionScreen(
             roleName: extra['roleName'] as String,
             roleId: extra['roleId'] as String,
+            sessionType: extra['sessionType'] as InterviewSessionType? ??
+                InterviewSessionType.behavioral,
           );
         },
       ),

@@ -70,8 +70,7 @@ Widget _actionRow({
                   borderRadius: BorderRadius.circular(context.r(50))),
             ),
             child: context.text(confirmLabel,
-                style:
-                    textTheme.bodyBold.copyWith(color: AppColors.grey50)),
+                style: textTheme.bodyBold.copyWith(color: AppColors.grey50)),
           ),
         ),
       ),
@@ -83,7 +82,8 @@ Widget _actionRow({
 
 class SelectJobDialog extends ConsumerStatefulWidget {
   /// Called with (roleName, roleId) when Start Interview is tapped
-  final void Function(String roleName, String roleId) onStart;
+  final void Function(
+      String roleName, String roleId, InterviewSessionType sessionType) onStart;
 
   /// If provided, pre-fills the job title (from job matching feature)
   final String? prefilledJobTitle;
@@ -101,13 +101,13 @@ class SelectJobDialog extends ConsumerStatefulWidget {
 class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
   InterviewRole? _selectedRole;
   String? _errorText;
+  InterviewSessionType _sessionType = InterviewSessionType.behavioral;
 
   @override
   void initState() {
     super.initState();
     if (widget.prefilledJobTitle != null) {
-      _selectedRole =
-          InterviewRoles.findByName(widget.prefilledJobTitle!);
+      _selectedRole = InterviewRoles.findByName(widget.prefilledJobTitle!);
     }
   }
 
@@ -118,8 +118,7 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
     final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
     final textMuted = isDark ? AppColors.grey300 : AppColors.grey800;
     final cardBg = isDark ? AppColors.blue600 : AppColors.grey100;
-    final borderColor =
-        isDark ? AppColors.blue400 : AppColors.grey300;
+    final borderColor = isDark ? AppColors.blue400 : AppColors.grey300;
 
     return Dialog(
       backgroundColor: isDark ? AppColors.blue700 : AppColors.grey50,
@@ -178,8 +177,7 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
                     style: textTheme.bodyRegular
                         .copyWith(color: AppColors.grey700),
                   ),
-                  dropdownColor:
-                      isDark ? AppColors.blue600 : AppColors.grey50,
+                  dropdownColor: isDark ? AppColors.blue600 : AppColors.grey50,
                   icon: Icon(Icons.keyboard_arrow_down_rounded,
                       color: textMuted, size: context.icon(20)),
                   items: InterviewRoles.roles
@@ -220,6 +218,110 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
             ],
 
             SizedBox(height: context.h(24)),
+            // ── Interview Type ──────────────────────────────────────────
+            context.text('Interview Type',
+                style: textTheme.bodyBold.copyWith(color: textPrimary)),
+            SizedBox(height: context.h(10)),
+            Row(
+              children: [
+                // Behavioral
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(
+                        () => _sessionType = InterviewSessionType.behavioral),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: EdgeInsets.all(context.w(12)),
+                      decoration: BoxDecoration(
+                        color: _sessionType == InterviewSessionType.behavioral
+                            ? AppColors.lightBlue500.withOpacity(0.1)
+                            : cardBg,
+                        borderRadius: BorderRadius.circular(context.r(12)),
+                        border: Border.all(
+                          color: _sessionType == InterviewSessionType.behavioral
+                              ? AppColors.lightBlue500
+                              : borderColor,
+                          width: _sessionType == InterviewSessionType.behavioral
+                              ? 2
+                              : 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(Icons.videocam_rounded,
+                              color: _sessionType ==
+                                      InterviewSessionType.behavioral
+                                  ? AppColors.lightBlue500
+                                  : textMuted,
+                              size: context.icon(24)),
+                          SizedBox(height: context.h(6)),
+                          context.text('Behavioral',
+                              style: textTheme.bodyBold.copyWith(
+                                  color: _sessionType ==
+                                          InterviewSessionType.behavioral
+                                      ? AppColors.lightBlue500
+                                      : textPrimary)),
+                          SizedBox(height: context.h(2)),
+                          context.text('Video + voice',
+                              style: textTheme.captionRegular
+                                  .copyWith(color: textMuted),
+                              textAlign: TextAlign.center),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: context.w(10)),
+                // Technical
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(
+                        () => _sessionType = InterviewSessionType.technical),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: EdgeInsets.all(context.w(12)),
+                      decoration: BoxDecoration(
+                        color: _sessionType == InterviewSessionType.technical
+                            ? AppColors.lightBlue500.withOpacity(0.1)
+                            : cardBg,
+                        borderRadius: BorderRadius.circular(context.r(12)),
+                        border: Border.all(
+                          color: _sessionType == InterviewSessionType.technical
+                              ? AppColors.lightBlue500
+                              : borderColor,
+                          width: _sessionType == InterviewSessionType.technical
+                              ? 2
+                              : 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(Icons.mic_rounded,
+                              color:
+                                  _sessionType == InterviewSessionType.technical
+                                      ? AppColors.lightBlue500
+                                      : textMuted,
+                              size: context.icon(24)),
+                          SizedBox(height: context.h(6)),
+                          context.text('Technical',
+                              style: textTheme.bodyBold.copyWith(
+                                  color: _sessionType ==
+                                          InterviewSessionType.technical
+                                      ? AppColors.lightBlue500
+                                      : textPrimary)),
+                          SizedBox(height: context.h(2)),
+                          context.text('Audio only',
+                              style: textTheme.captionRegular
+                                  .copyWith(color: textMuted),
+                              textAlign: TextAlign.center),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: context.h(4)),
 
             // Start Interview button
             SizedBox(
@@ -236,8 +338,8 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
                 ),
                 child: context.text(
                   'Start Interview',
-                  style: textTheme.title2Bold
-                      .copyWith(color: AppColors.blue700),
+                  style:
+                      textTheme.title2Bold.copyWith(color: AppColors.blue700),
                 ),
               ),
             ),
@@ -249,12 +351,12 @@ class _SelectJobDialogState extends ConsumerState<SelectJobDialog> {
 
   void _handleStart() {
     if (_selectedRole == null) {
-      setState(
-          () => _errorText = 'Please select a job title to continue.');
+      setState(() => _errorText = 'Please select a job title to continue.');
       return;
     }
     Navigator.of(context).pop();
-    widget.onStart(_selectedRole!.roleName, _selectedRole!.roleId);
+    widget.onStart(
+        _selectedRole!.roleName, _selectedRole!.roleId, _sessionType);
   }
 }
 
@@ -590,8 +692,7 @@ class RestartInterviewDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          context.text(
-              'Are you sure you want to restart this interview?',
+          context.text('Are you sure you want to restart this interview?',
               style: textTheme.title2Bold.copyWith(color: textPrimary),
               textAlign: TextAlign.center),
           SizedBox(height: context.h(12)),
@@ -621,11 +722,15 @@ class RestartInterviewDialog extends StatelessWidget {
 }
 
 // ─── 8. Interview Completed Dialog ────────────────────────────────────────────
-
 class InterviewCompletedDialog extends StatelessWidget {
-  final VoidCallback onGotIt;
+  final VoidCallback onGoHome;
+  final VoidCallback onStartNew;
 
-  const InterviewCompletedDialog({super.key, required this.onGotIt});
+  const InterviewCompletedDialog({
+    super.key,
+    required this.onGoHome,
+    required this.onStartNew,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -633,6 +738,7 @@ class InterviewCompletedDialog extends StatelessWidget {
     final textTheme = context.appTextTheme;
     final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
     final textMuted = isDark ? AppColors.grey300 : AppColors.grey800;
+    final btnColor = isDark ? AppColors.lightBlue500 : AppColors.lightBlue600;
 
     return _buildDialog(
       context: context,
@@ -640,32 +746,67 @@ class InterviewCompletedDialog extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          context.text('Interview Completed',
+          Container(
+            width: context.w(64),
+            height: context.w(64),
+            decoration: BoxDecoration(
+              color: AppColors.green500.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.check_circle_outline_rounded,
+                color: AppColors.green500, size: context.icon(36)),
+          ),
+          SizedBox(height: context.h(16)),
+          context.text('Interview Completed! 🎉',
               style: textTheme.title2Bold.copyWith(color: textPrimary),
               textAlign: TextAlign.center),
-          SizedBox(height: context.h(12)),
+          SizedBox(height: context.h(8)),
           context.text(
-            'You\'ll receive an alert once your interview feedback is ready.',
+            "We're analyzing your session.\nYou'll receive a notification once your feedback is ready.",
             style: textTheme.bodyRegular.copyWith(color: textMuted),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: context.h(24)),
-          SizedBox(
-            width: double.infinity,
-            height: context.h(50),
-            child: ElevatedButton(
-              onPressed: onGotIt,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.lightBlue600,
-                foregroundColor: AppColors.grey50,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(context.r(50))),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: context.h(46),
+                  child: OutlinedButton(
+                    onPressed: onGoHome,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: textPrimary,
+                      side: BorderSide(
+                          color:
+                              isDark ? AppColors.blue300 : AppColors.grey400),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(context.r(50))),
+                    ),
+                    child: context.text('Go Home',
+                        style: textTheme.bodyBold.copyWith(color: textPrimary)),
+                  ),
+                ),
               ),
-              child: context.text('Got it',
-                  style: textTheme.title2Bold
-                      .copyWith(color: AppColors.grey50)),
-            ),
+              SizedBox(width: context.w(10)),
+              Expanded(
+                child: SizedBox(
+                  height: context.h(46),
+                  child: ElevatedButton(
+                    onPressed: onStartNew,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: btnColor,
+                      foregroundColor: AppColors.grey50,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(context.r(50))),
+                    ),
+                    child: context.text('New Interview',
+                        style: textTheme.bodyBold
+                            .copyWith(color: AppColors.grey50)),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

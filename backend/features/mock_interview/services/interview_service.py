@@ -133,7 +133,7 @@ class MockInterviewService:
             raise HTTPException(status_code=502, detail="ElevenLabs TTS failed")
 
     # ------------------------------------------------------------------ #
-    #  Behavioral pipeline — upload → process → delete blob               #
+    #  Behavioral pipeline — upload → process → notify → delete blob      #
     # ------------------------------------------------------------------ #
 
     async def queue_behavioral_upload(
@@ -173,6 +173,10 @@ class MockInterviewService:
                 logger.info("Behavioral: session already in_progress/completed, skipping duplicate run")
                 return
 
+            # Keep user_id for FCM notification (from HEAD)
+            user_id = session.get("user_id")
+
+            # Blob readiness check (from origin/main)
             if not await self._is_blob_ready(blob_url, min_size_bytes=1024):
                 logger.warning("Behavioral: blob missing or too small, skipping")
                 await self._safe_update_session_status(session_id, "pending")
@@ -210,26 +214,34 @@ class MockInterviewService:
                 analysis_metrics=behavioral_metrics,
                 behavioral_report=report,
                 transcript=transcript_text,
-                video_url=None,          # blob will be deleted; don't store a dead URL
+                video_url=None,
                 score=behavioral_score,
             )
 
             await self._safe_update_session_status(session_id, "completed")
             logger.info(f"Behavioral pipeline completed for session {session_id}")
 
+            if user_id:
+                asyncio.create_task(
+                    self._send_fcm_notification(
+                        session_id=session_id,
+                        user_id=user_id,
+                        role_name=role_name,
+                        session_type="behavioral",
+                    )
+                )
+
         except Exception:
             await self._safe_update_session_status(session_id, "pending")
             logger.exception(f"Behavioral pipeline failed for session {session_id}")
 
         finally:
-            # Always delete the blob — whether processing succeeded or failed
             deleted = await self._safe_delete_blob(blob_url)
-            # Explicitly log/print that the pipeline finished and deletion attempted
             logger.info(f"Behavioral pipeline finished for session {session_id}; blob deleted: {deleted}")
             print(f"Behavioral pipeline finished for session {session_id}; blob deleted: {deleted}")
 
     # ------------------------------------------------------------------ #
-    #  Technical pipeline — upload → process → delete blob                #
+    #  Technical pipeline — upload → process → notify → delete blob       #
     # ------------------------------------------------------------------ #
 
     async def queue_technical_upload(
@@ -267,6 +279,10 @@ class MockInterviewService:
                 logger.info("Technical: session already in_progress/completed, skipping duplicate run")
                 return
 
+            # Keep user_id for FCM notification (from HEAD)
+            user_id = session.get("user_id")
+
+            # Blob readiness check (from origin/main)
             if not await self._is_blob_ready(blob_url, min_size_bytes=1024):
                 logger.warning("Technical: blob missing or too small, skipping")
                 await self._safe_update_session_status(session_id, "pending")
@@ -328,21 +344,101 @@ class MockInterviewService:
                 session_id=session_id,
                 technical_report=report,
                 transcript=transcript_text,
-                video_url=None,          # blob will be deleted; don't store a dead URL
+                video_url=None,
             )
 
             await self._safe_update_session_status(session_id, "completed")
             logger.info(f"Technical pipeline completed for session {session_id}")
+
+            if user_id:
+                asyncio.create_task(
+                    self._send_fcm_notification(
+                        session_id=session_id,
+                        user_id=user_id,
+                        role_name=role.get("role_name") if role else None,
+                        session_type="technical",
+                    )
+                )
 
         except Exception:
             await self._safe_update_session_status(session_id, "pending")
             logger.exception(f"Technical pipeline failed for session {session_id}")
 
         finally:
-            # Always delete the blob — whether processing succeeded or failed
             deleted = await self._safe_delete_blob(blob_url)
             logger.info(f"Technical pipeline finished for session {session_id}; blob deleted: {deleted}")
             print(f"Technical pipeline finished for session {session_id}; blob deleted: {deleted}")
+
+    # ------------------------------------------------------------------ #
+    #  FCM Push Notification                                               #
+    # ------------------------------------------------------------------ #
+
+    async def _send_fcm_notification(
+        self,
+        session_id: UUID,
+        user_id: str,
+        role_name: Optional[str],
+        session_type: str,
+    ) -> None:
+        try:
+            import firebase_admin
+            from firebase_admin import credentials, messaging
+
+            if not firebase_admin._apps:
+                cred_path = getattr(settings, "FIREBASE_CREDENTIALS_PATH", "")
+                if not cred_path or not os.path.exists(cred_path):
+                    logger.warning(
+                        "FIREBASE_CREDENTIALS_PATH not set or file not found — skipping FCM notification"
+                    )
+                    return
+                cred = credentials.Certificate(cred_path)
+                firebase_admin.initialize_app(cred)
+
+            token_result = (
+                self.repo.client.table("user_fcm_tokens")
+                .select("fcm_token")
+                .eq("user_id", str(user_id))
+                .limit(1)
+                .execute()
+            )
+            if not token_result.data:
+                logger.info(f"No FCM token for user {user_id} — skipping notification")
+                return
+
+            fcm_token = token_result.data[0]["fcm_token"]
+            role_display = role_name or session_type.capitalize()
+
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title="Interview Feedback Ready! 🎉",
+                    body=f"Your {role_display} interview feedback is now available. Tap to view.",
+                ),
+                data={
+                    "session_id": str(session_id),
+                    "session_type": session_type,
+                    "type": "interview_feedback",
+                    "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                },
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id="interview_feedback",
+                        icon="ic_launcher",
+                    ),
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(badge=1, sound="default"),
+                    ),
+                ),
+                token=fcm_token,
+            )
+
+            messaging.send(message)
+            logger.info(f"FCM notification sent successfully for session {session_id}")
+
+        except Exception as e:
+            logger.error(f"FCM notification failed for session {session_id}: {e}")
 
     # ------------------------------------------------------------------ #
     #  Read results                                                        #
@@ -430,7 +526,7 @@ class MockInterviewService:
             logger.debug(f"Blob readiness check failed: {e}")
             return False
 
-    async def _safe_delete_blob(self, blob_url: str) -> None:
+    async def _safe_delete_blob(self, blob_url: str) -> bool:
         try:
             credential = settings.STORAGE_ACCOUNT_KEY or None
             blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
@@ -454,7 +550,6 @@ class MockInterviewService:
     # ------------------------------------------------------------------ #
 
     def _transcribe_video_bytes(self, video_bytes: bytes) -> str:
-        """Write bytes to a temp file, transcribe, return plain text."""
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
@@ -502,17 +597,8 @@ class MockInterviewService:
                 "cuda" if behavioral_pipeline.torch.cuda.is_available() else "cpu"
             )
             (
-                vocab,
-                nlp,
-                smile,
-                audio_mins,
-                audio_denom,
-                visual,
-                audio,
-                text,
-                baseline,
-                siamese,
-                final,
+                vocab, nlp, smile, audio_mins, audio_denom,
+                visual, audio, text, baseline, siamese, final,
             ) = behavioral_pipeline.load_all_models(device)
 
             language_code_override = self._resolve_language_code(language_preferred)

@@ -1,38 +1,67 @@
+import 'dart:convert';
 import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../domain/entities/interview_entities.dart';
-import '../../domain/repositories/mock_interview_repository.dart';
 import '../models/interview_models.dart';
 
-class MockInterviewRepositoryImpl implements MockInterviewRepository {
+class MockInterviewRepositoryImpl {
   final Dio _dio = apiClient.dio;
 
-  static const String _base = '/api/v1/mock_interview';
+  static const String _base = '/api/v1/mock-interview';
+  static const String _cacheKey = 'mock_interview_sessions';
 
-  // ─── Start Session ─────────────────────────────────────────────────────────
+  // ─── Start Behavioral Session ──────────────────────────────────────
+  // POST /api/v1/mock-interview/sessions/start/behavioral
+  // Body: { role_name, user_id }
+  // Returns: { session_id, questions, sas_token, blob_url, sas_expires_at }
 
-  @override
-  Future<InterviewSessionEntity> startSession({
+  Future<InterviewSessionEntity> startBehavioralSession({
     required String roleName,
-    required String roleId,
+    required String userId,
   }) async {
     final response = await _dio.post(
-      '$_base/sessions/start',
+      '$_base/sessions/start/behavioral',
       data: {
         'role_name': roleName,
-        'role_id': roleId,
+        'user_id': userId,
       },
     );
     return InterviewSessionModel.fromJson(
       response.data as Map<String, dynamic>,
-    ).toEntity();
+    ).toEntity(InterviewSessionType.behavioral);
+  }
+
+  // ─── Start Technical Session  ───────────────────────────────────
+  // POST /api/v1/mock-interview/sessions/start/technical
+  // Body: { role_name, user_id }
+  // Returns: { session_id, questions, sas_token, blob_url, sas_expires_at }
+
+  Future<InterviewSessionEntity> startTechnicalSession({
+    required String roleName,
+    required String userId,
+  }) async {
+    final response = await _dio.post(
+      '$_base/sessions/start/technical',
+      data: {
+        'role_name': roleName,
+        'user_id': userId,
+      },
+    );
+    return InterviewSessionModel.fromJson(
+      response.data as Map<String, dynamic>,
+    ).toEntity(InterviewSessionType.technical);
   }
 
   // ─── Get Question Audio ────────────────────────────────────────────────────
+  // GET /api/v1/mock-interview/questions/{question_id}/audio-stream
+  // Returns: audio/mpeg bytes stream
 
-  @override
   Future<List<int>> getQuestionAudio(String questionId) async {
     final response = await _dio.get<List<int>>(
       '$_base/questions/$questionId/audio-stream',
@@ -42,73 +71,64 @@ class MockInterviewRepositoryImpl implements MockInterviewRepository {
   }
 
   // ─── Notify Upload Complete ────────────────────────────────────────────────
+  // POST /api/v1/mock-interview/notify-upload
+  // Body: { session_id, blob_url }
+  // Works for both behavioral AND technical sessions
 
-  @override
   Future<void> notifyUploadComplete({
     required String sessionId,
-    required String videoUrl,
+    required String blobUrl,
   }) async {
     await _dio.post(
-      '$_base/behavioural/notify-upload',
+      '$_base/notify-upload',
       data: {
         'session_id': sessionId,
-        'video_url': videoUrl,
+        'blob_url': blobUrl,
       },
     );
   }
 
-  // ─── Get Feedback List ─────────────────────────────────────────────────────
+  // ─── Get Behavioral Report ─────────────────────────────────────────────────
+  // GET /api/v1/mock-interview/analysis/{session_id}/behavioral-report
+  // Returns: String (markdown text)
 
-  @override
-  Future<List<InterviewFeedbackSummary>> getFeedbackList() async {
-    final response = await _dio.get('$_base/interviews/feedback');
-    final List<dynamic> data = response.data as List<dynamic>? ?? [];
-    return data
-        .map((item) => InterviewFeedbackSummaryModel.fromJson(
-              item as Map<String, dynamic>,
-            ).toEntity())
-        .toList();
+  Future<String> getBehavioralReport(String sessionId) async {
+    final response = await _dio.get<dynamic>(
+      '$_base/analysis/$sessionId/behavioral-report',
+    );
+    return response.data?.toString() ?? '';
   }
 
-  // ─── Get Feedback Detail ───────────────────────────────────────────────────
+  // ─── Get Technical Report ──────────────────────────────────────────────────
+  // GET /api/v1/mock-interview/analysis/{session_id}/technical-report
+  // Returns: String (markdown text)
 
-  @override
-  Future<InterviewFeedbackDetailEntity> getFeedbackDetail(
-      String sessionId) async {
-    final response = await _dio.get('$_base/interviews/feedback/$sessionId');
-    return InterviewFeedbackDetailModel.fromJson(
-      response.data as Map<String, dynamic>,
-    ).toEntity();
+  Future<String> getTechnicalReport(String sessionId) async {
+    final response = await _dio.get<dynamic>(
+      '$_base/analysis/$sessionId/technical-report',
+    );
+    return response.data?.toString() ?? '';
   }
 
-  // ─── Delete Feedback ───────────────────────────────────────────────────────
+  // ─── Upload to Azure Blob ──────────────────────────────────────────────────
+  // الباك بيبعت blob_url كامل + sas_token
+  // إحنا بنعمل PUT على الـ blob_url مباشرة مع الـ sas_token في الـ URL
+  // الفرق: behavioral → video/mp4 | technical → audio/mp3
 
-  @override
-  Future<void> deleteFeedback(String sessionId) async {
-    await _dio.delete('$_base/interviews/feedback/$sessionId');
-  }
-
-  // ─── Upload Video to Azure ─────────────────────────────────────────────────
-  // Uses the SAS token from the session to upload directly to Azure Blob Storage
-  // This bypasses the backend and uploads directly from the app
-  @override
-  Future<String> uploadVideoToAzure({
-    required File videoFile,
+  Future<void> uploadToAzure({
+    required File file,
+    required String blobUrl,
     required String sasToken,
-    required String sessionId,
+    required InterviewSessionType sessionType,
   }) async {
-    // SAS token URL format: https://<account>.blob.core.windows.net/<container>/<blob>?<sas>
-    // We upload using PUT request with the SAS URL
-    final fileName =
-        'interview_${sessionId}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final isVideo = sessionType == InterviewSessionType.behavioral;
+    final contentType = isVideo ? 'video/mp4' : 'audio/mpeg';
 
-    // Build the blob URL with SAS token
-    // The sasToken should be the full URL with SAS query params
-    final uploadUrl = sasToken.contains('?')
-        ? '${sasToken.split('?')[0]}/$fileName?${sasToken.split('?')[1]}'
-        : '$sasToken/$fileName';
+    // Build upload URL: blob_url?sas_token
+    final uploadUrl =
+        blobUrl.contains('?') ? '$blobUrl&$sasToken' : '$blobUrl?$sasToken';
 
-    final fileBytes = await videoFile.readAsBytes();
+    final fileBytes = await file.readAsBytes();
 
     final azureDio = Dio();
     await azureDio.put(
@@ -117,13 +137,96 @@ class MockInterviewRepositoryImpl implements MockInterviewRepository {
       options: Options(
         headers: {
           'x-ms-blob-type': 'BlockBlob',
-          'Content-Type': 'video/mp4',
+          'Content-Type': contentType,
           'Content-Length': fileBytes.length,
         },
+        sendTimeout: const Duration(minutes: 5),
+        receiveTimeout: const Duration(minutes: 2),
       ),
     );
+  }
 
-    // Return the blob URL (without SAS for storage)
-    return uploadUrl.split('?')[0];
+  // ─── Local Cache for Sessions ──────────────────────────────────────────────
+
+  Future<void> saveSessionLocally({
+    required String sessionId,
+    required String roleName,
+    required InterviewSessionType sessionType,
+  }) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId != null) {
+      try {
+        await Supabase.instance.client.from('interview_sessions').upsert({
+          'session_id': sessionId,
+          'user_id': userId,
+          'role_name': roleName,
+          'session_type': sessionType.name,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      } catch (e) {
+        debugPrint('Supabase session save failed: $e');
+      }
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cacheKey);
+    final List<Map<String, dynamic>> sessions = raw != null
+        ? List<Map<String, dynamic>>.from(jsonDecode(raw) as List)
+        : [];
+    sessions.removeWhere((s) => s['session_id'] == sessionId);
+    sessions.insert(0, {
+      'session_id': sessionId,
+      'role_name': roleName,
+      'session_type': sessionType.name,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+    await prefs.setString(_cacheKey, jsonEncode(sessions));
+  }
+
+  Future<List<Map<String, dynamic>>> getLocalSessions() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId != null) {
+      try {
+        final response = await Supabase.instance.client
+            .from('interview_sessions')
+            .select()
+            .eq('user_id', userId)
+            .order('created_at', ascending: false);
+
+        final sessions = List<Map<String, dynamic>>.from(response as List);
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_cacheKey, jsonEncode(sessions));
+
+        return sessions;
+      } catch (e) {
+        debugPrint('Supabase fetch failed, falling back to cache: $e');
+      }
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cacheKey);
+    if (raw == null) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(raw) as List);
+  }
+
+  Future<void> deleteLocalSession(String sessionId) async {
+    try {
+      await Supabase.instance.client
+          .from('interview_sessions')
+          .delete()
+          .eq('session_id', sessionId);
+    } catch (e) {
+      debugPrint('Supabase delete failed: $e');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_cacheKey);
+    if (raw == null) return;
+    final sessions = List<Map<String, dynamic>>.from(jsonDecode(raw) as List);
+    sessions.removeWhere((s) => s['session_id'] == sessionId);
+    await prefs.setString(_cacheKey, jsonEncode(sessions));
   }
 }
