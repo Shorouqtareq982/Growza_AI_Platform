@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/extensions/responsive_extension.dart';
 import '../../../../core/theme/app_text_theme.dart';
+import '../../domain/entities/interview_entities.dart';
 import '../providers/mock_interview_provider.dart';
 
 class InterviewFeedbackDetailScreen extends ConsumerStatefulWidget {
@@ -30,6 +31,14 @@ class _InterviewFeedbackDetailScreenState
     });
   }
 
+  bool get _hasReport {
+    final detail = ref.read(mockInterviewProvider).feedbackDetail;
+    if (detail == null) return false;
+    return detail.strongPoints.isNotEmpty ||
+        detail.areasForImprovement.isNotEmpty ||
+        detail.suggestions.isNotEmpty;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -43,8 +52,7 @@ class _InterviewFeedbackDetailScreenState
       body: SafeArea(
         child: state.isLoadingDetail
             ? const Center(
-                child: CircularProgressIndicator(
-                    color: AppColors.lightBlue500))
+                child: CircularProgressIndicator(color: AppColors.lightBlue500))
             : state.feedbackDetail == null
                 ? _buildError(context, textTheme, textPrimary)
                 : CustomScrollView(
@@ -54,16 +62,13 @@ class _InterviewFeedbackDetailScreenState
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: EdgeInsets.symmetric(
-                              horizontal: context.w(8),
-                              vertical: context.h(8)),
+                              horizontal: context.w(8), vertical: context.h(8)),
                           child: Row(
                             children: [
                               IconButton(
                                 onPressed: () => context.pop(),
-                                icon: Icon(
-                                    Icons.arrow_back_ios_new_rounded,
-                                    color: textPrimary,
-                                    size: context.icon(20)),
+                                icon: Icon(Icons.arrow_back_ios_new_rounded,
+                                    color: textPrimary, size: context.icon(20)),
                               ),
                               Expanded(
                                 child: Center(
@@ -71,10 +76,10 @@ class _InterviewFeedbackDetailScreenState
                                     'assets/images/branding/growza_logo.png',
                                     width: context.logo(40),
                                     height: context.logo(40),
-                                    errorBuilder: (_, __, ___) =>
-                                        Icon(Icons.shield_outlined,
-                                            color: AppColors.lightBlue500,
-                                            size: context.icon(40)),
+                                    errorBuilder: (_, __, ___) => Icon(
+                                        Icons.shield_outlined,
+                                        color: AppColors.lightBlue500,
+                                        size: context.icon(40)),
                                   ),
                                 ),
                               ),
@@ -85,42 +90,49 @@ class _InterviewFeedbackDetailScreenState
                       ),
 
                       SliverPadding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: context.w(20)),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: context.w(20)),
                         sliver: SliverList(
                           delegate: SliverChildListDelegate([
-                            // Summary card
+                            // Summary card — دايماً يظهر
                             _buildSummaryCard(context, isDark, textTheme),
                             SizedBox(height: context.h(16)),
 
-                            // Strong Points
-                            _buildSection(
-                              context: context,
-                              isDark: isDark,
-                              textTheme: textTheme,
-                              title: 'Strong Points',
-                              titleColor: AppColors.green500,
-                              icon: Icons.check_circle_outline_rounded,
-                              items: state.feedbackDetail!.strongPoints,
-                            ),
-                            SizedBox(height: context.h(16)),
+                            // لو الريبورت فاضي → pending state
+                            if (!_hasReport)
+                              _buildPendingState(context, isDark, textTheme),
 
-                            // Areas for Improvement
-                            _buildSection(
-                              context: context,
-                              isDark: isDark,
-                              textTheme: textTheme,
-                              title: 'Areas for Improvement',
-                              titleColor: AppColors.orange500,
-                              icon: Icons.info_outline_rounded,
-                              items: state
-                                  .feedbackDetail!.areasForImprovement,
-                            ),
-                            SizedBox(height: context.h(16)),
+                            // لو في ريبورت → sections
+                            if (_hasReport) ...[
+                              // Strengths
+                              _buildSection(
+                                context: context,
+                                isDark: isDark,
+                                textTheme: textTheme,
+                                title: 'Strengths',
+                                titleColor: AppColors.green500,
+                                icon: Icons.check_circle_outline_rounded,
+                                items: state.feedbackDetail!.strongPoints,
+                              ),
+                              SizedBox(height: context.h(16)),
 
-                            // Suggestions
-                            _buildSuggestions(
-                                context, isDark, textTheme),
+                              // Weaknesses
+                              _buildSection(
+                                context: context,
+                                isDark: isDark,
+                                textTheme: textTheme,
+                                title: 'Weaknesses',
+                                titleColor: AppColors.orange500,
+                                icon: Icons.info_outline_rounded,
+                                items:
+                                    state.feedbackDetail!.areasForImprovement,
+                              ),
+                              SizedBox(height: context.h(16)),
+
+                              // Suggestions
+                              _buildSuggestions(context, isDark, textTheme),
+                            ],
+
                             SizedBox(height: context.h(24)),
                           ]),
                         ),
@@ -131,8 +143,65 @@ class _InterviewFeedbackDetailScreenState
     );
   }
 
-  Widget _buildError(BuildContext context, AppTextTheme textTheme,
-      Color textPrimary) {
+  // ── Pending State ────────────────────────────────────
+
+  Widget _buildPendingState(
+      BuildContext context, bool isDark, AppTextTheme textTheme) {
+    final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
+    final textMuted = isDark ? AppColors.grey400 : AppColors.grey800;
+    final iconBg = isDark
+        ? AppColors.lightBlue500.withOpacity(0.1)
+        : AppColors.lightBlue100;
+
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: context.h(40)),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: context.w(80),
+            height: context.w(80),
+            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+            child: Icon(Icons.hourglass_top_rounded,
+                color: AppColors.lightBlue500, size: context.icon(40)),
+          ),
+          SizedBox(height: context.h(20)),
+          context.text(
+            'Feedback is being prepared',
+            style: textTheme.title2Bold.copyWith(color: textPrimary),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: context.h(8)),
+          context.text(
+            "We're still analyzing your interview.\nYou'll receive a notification once it's ready.",
+            style: textTheme.bodyRegular.copyWith(color: textMuted),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: context.h(24)),
+          ElevatedButton.icon(
+            onPressed: () => ref
+                .read(mockInterviewProvider.notifier)
+                .loadFeedbackDetail(widget.sessionId),
+            icon: Icon(Icons.refresh_rounded, size: context.icon(18)),
+            label: const Text('Check Again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.lightBlue500,
+              foregroundColor: AppColors.blue900,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(context.r(50)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Error ──────────────────────────────────────────────────────────────────
+
+  Widget _buildError(
+      BuildContext context, AppTextTheme textTheme, Color textPrimary) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -154,6 +223,8 @@ class _InterviewFeedbackDetailScreenState
     );
   }
 
+  // ── Summary Card  ──────────────────────────────────────────────
+
   Widget _buildSummaryCard(
       BuildContext context, bool isDark, AppTextTheme textTheme) {
     final detail = ref.watch(mockInterviewProvider).feedbackDetail!;
@@ -162,6 +233,7 @@ class _InterviewFeedbackDetailScreenState
         isDark ? AppColors.blue400.withOpacity(0.3) : AppColors.grey300;
     final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
     final dateColor = isDark ? AppColors.grey300 : AppColors.grey700;
+    final isBehavioral = detail.sessionType == InterviewSessionType.behavioral;
 
     return Container(
       padding: EdgeInsets.all(context.w(16)),
@@ -170,61 +242,56 @@ class _InterviewFeedbackDetailScreenState
         borderRadius: BorderRadius.circular(context.r(12)),
         border: Border.all(color: borderColor),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                context.text(detail.roleName,
-                    style:
-                        textTheme.title2Bold.copyWith(color: textPrimary)),
-                SizedBox(height: context.h(4)),
-                context.text(detail.recommendation,
-                    style: textTheme.captionRegular
-                        .copyWith(color: AppColors.lightBlue500)),
-                SizedBox(height: context.h(8)),
-                Row(
-                  children: [
-                    Icon(Icons.calendar_today_outlined,
-                        color: dateColor, size: context.icon(13)),
-                    SizedBox(width: context.w(4)),
-                    context.text(
-                      DateFormat('MMMM d, y').format(detail.createdAt),
-                      style: textTheme.captionRegular
-                          .copyWith(color: dateColor),
-                    ),
-                  ],
+          Row(
+            children: [
+              Expanded(
+                child: context.text(
+                  detail.roleName,
+                  style: textTheme.title2Bold.copyWith(color: textPrimary),
                 ),
-              ],
-            ),
+              ),
+              // Session type badge
+              Container(
+                padding: EdgeInsets.symmetric(
+                    horizontal: context.w(10), vertical: context.h(4)),
+                decoration: BoxDecoration(
+                  color: isBehavioral
+                      ? AppColors.lightBlue500.withOpacity(0.15)
+                      : AppColors.purple500.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(context.r(20)),
+                ),
+                child: context.text(
+                  isBehavioral ? 'Behavioral' : 'Technical',
+                  style: textTheme.captionBold.copyWith(
+                    color: isBehavioral
+                        ? AppColors.lightBlue500
+                        : AppColors.purple500,
+                  ),
+                ),
+              ),
+            ],
           ),
-          SizedBox(width: context.w(12)),
-          Container(
-            padding: EdgeInsets.symmetric(
-                horizontal: context.w(14), vertical: context.h(8)),
-            decoration: BoxDecoration(
-              color: AppColors.lightBlue500.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(context.r(8)),
-              border: Border.all(
-                  color: AppColors.lightBlue500.withOpacity(0.4)),
-            ),
-            child: Column(
-              children: [
-                context.text('${detail.score}%',
-                    style: textTheme.title2Bold
-                        .copyWith(color: AppColors.lightBlue500)),
-                context.text('Score',
-                    style: textTheme.captionRegular
-                        .copyWith(color: AppColors.lightBlue500)),
-              ],
-            ),
+          SizedBox(height: context.h(8)),
+          Row(
+            children: [
+              Icon(Icons.calendar_today_outlined,
+                  color: dateColor, size: context.icon(13)),
+              SizedBox(width: context.w(4)),
+              context.text(
+                DateFormat('MMMM d, y').format(detail.createdAt),
+                style: textTheme.captionRegular.copyWith(color: dateColor),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+
+  // ── Section (Strengths / Weaknesses) ──────────────────────────────────────
 
   Widget _buildSection({
     required BuildContext context,
@@ -279,8 +346,8 @@ class _InterviewFeedbackDetailScreenState
                     SizedBox(width: context.w(8)),
                     Expanded(
                       child: context.text(item,
-                          style: textTheme.bodyRegular
-                              .copyWith(color: textMuted)),
+                          style:
+                              textTheme.bodyRegular.copyWith(color: textMuted)),
                     ),
                   ],
                 ),
@@ -289,6 +356,8 @@ class _InterviewFeedbackDetailScreenState
       ),
     );
   }
+
+  // ── Suggestions ────────────────────────────────────────────────────────────
 
   Widget _buildSuggestions(
       BuildContext context, bool isDark, AppTextTheme textTheme) {
@@ -319,13 +388,37 @@ class _InterviewFeedbackDetailScreenState
                   color: accentColor, size: context.icon(16)),
               SizedBox(width: context.w(6)),
               context.text('Suggestions',
-                  style:
-                      textTheme.title2Bold.copyWith(color: accentColor)),
+                  style: textTheme.title2Bold.copyWith(color: accentColor)),
             ],
           ),
           SizedBox(height: context.h(12)),
-          context.text(detail.suggestions,
-              style: textTheme.bodyRegular.copyWith(color: textMuted)),
+          // Suggestions كـ bullet points
+          ...detail.suggestions.split('\n').where((s) => s.isNotEmpty).map(
+                (item) => Padding(
+                  padding: EdgeInsets.only(bottom: context.h(8)),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.only(top: context.h(4)),
+                        child: Container(
+                          width: context.w(5),
+                          height: context.w(5),
+                          decoration: BoxDecoration(
+                              color: accentColor.withOpacity(0.6),
+                              shape: BoxShape.circle),
+                        ),
+                      ),
+                      SizedBox(width: context.w(8)),
+                      Expanded(
+                        child: context.text(item,
+                            style: textTheme.bodyRegular
+                                .copyWith(color: textMuted)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
         ],
       ),
     );

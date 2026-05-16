@@ -1,26 +1,55 @@
 import '../../domain/entities/interview_entities.dart';
 
-// ─── Session Model ────────────────────────────────────────────────────────────
+// ─── Question Model ───────────────────────────────────────────────────────────
+
+class InterviewQuestionModel {
+  final String questionId;
+  final String questionText;
+
+  const InterviewQuestionModel({
+    required this.questionId,
+    required this.questionText,
+  });
+
+  factory InterviewQuestionModel.fromJson(Map<String, dynamic> json) =>
+      InterviewQuestionModel(
+        questionId: json['question_id'] as String? ?? '',
+        questionText: json['question_text'] as String? ?? '',
+      );
+
+  InterviewQuestionEntity toEntity() => InterviewQuestionEntity(
+        questionId: questionId,
+        questionText: questionText,
+      );
+}
+
+// ─── Session Response Model ───────────────────────────────────────────────────
 
 class InterviewSessionModel {
   final String sessionId;
-  final String roleName;
   final String sasToken;
+  final String blobUrl;
+  final DateTime sasExpiresAt;
   final List<InterviewQuestionModel> questions;
 
   const InterviewSessionModel({
     required this.sessionId,
-    required this.roleName,
     required this.sasToken,
+    required this.blobUrl,
+    required this.sasExpiresAt,
     required this.questions,
   });
 
   factory InterviewSessionModel.fromJson(Map<String, dynamic> json) {
     final rawQuestions = json['questions'] as List<dynamic>? ?? [];
     return InterviewSessionModel(
-      sessionId: json['session_id'] as String? ?? '',
-      roleName: json['role_name'] as String? ?? '',
+      sessionId: json['session_id']?.toString() ?? '',
       sasToken: json['sas_token'] as String? ?? '',
+      blobUrl: json['blob_url'] as String? ?? '',
+      sasExpiresAt: json['sas_expires_at'] != null
+          ? DateTime.tryParse(json['sas_expires_at'].toString()) ??
+              DateTime.now().add(const Duration(hours: 1))
+          : DateTime.now().add(const Duration(hours: 1)),
       questions: rawQuestions
           .map(
               (q) => InterviewQuestionModel.fromJson(q as Map<String, dynamic>))
@@ -28,133 +57,69 @@ class InterviewSessionModel {
     );
   }
 
-  InterviewSessionEntity toEntity() => InterviewSessionEntity(
+  InterviewSessionEntity toEntity(InterviewSessionType sessionType) =>
+      InterviewSessionEntity(
         sessionId: sessionId,
-        roleName: roleName,
         sasToken: sasToken,
+        blobUrl: blobUrl,
+        sasExpiresAt: sasExpiresAt,
         questions: questions.map((q) => q.toEntity()).toList(),
+        sessionType: sessionType,
       );
 }
 
-// ─── Question Model ───────────────────────────────────────────────────────────
+// ─── Report Parser ────────────────────────────────────────────────────────────
+// **Strengths**
+// - bullet 1
+// - bullet 2
+//
+// **Weaknesses**
+// - bullet 1
+// - bullet 2
+//
+// **Suggestions**
+// - suggestion 1
+// - suggestion 2
 
-class InterviewQuestionModel {
-  final String questionId;
-  final String questionText;
-  final int orderIndex;
-  final int durationSeconds;
+class ReportParser {
+  static List<String> extractStrengths(String report) =>
+      _extractSection(report, 'Strengths');
 
-  const InterviewQuestionModel({
-    required this.questionId,
-    required this.questionText,
-    required this.orderIndex,
-    this.durationSeconds = 30,
-  });
+  static List<String> extractWeaknesses(String report) =>
+      _extractSection(report, 'Weaknesses');
 
-  factory InterviewQuestionModel.fromJson(Map<String, dynamic> json) =>
-      InterviewQuestionModel(
-        questionId: json['question_id'] as String? ?? '',
-        questionText: json['question_text'] as String? ?? '',
-        orderIndex: json['order_index'] as int? ?? 0,
-        durationSeconds: json['duration_seconds'] as int? ?? 30,
-      );
+  static String extractSuggestions(String report) =>
+      _extractSectionText(report, 'Suggestions');
 
-  InterviewQuestionEntity toEntity() => InterviewQuestionEntity(
-        questionId: questionId,
-        questionText: questionText,
-        orderIndex: orderIndex,
-        durationSeconds: durationSeconds,
-      );
-}
+  static List<String> _extractSection(String report, String section) {
+    final pattern = RegExp(
+      r'\*{1,2}' + section + r'\*{1,2}\s*\n(.*?)(?=\n\s*\*{1,2}|\s*$)',
+      dotAll: true,
+      caseSensitive: false,
+    );
+    final match = pattern.firstMatch(report);
+    if (match == null) return [];
+    return match
+        .group(1)!
+        .split('\n')
+        .map((l) => l.trim().replaceFirst(RegExp(r'^[-•*]\s*'), ''))
+        .where((l) => l.isNotEmpty)
+        .toList();
+  }
 
-// ─── Feedback Summary Model ───────────────────────────────────────────────────
-
-class InterviewFeedbackSummaryModel {
-  final String sessionId;
-  final String roleName;
-  final int score;
-  final String recommendation;
-  final DateTime createdAt;
-
-  const InterviewFeedbackSummaryModel({
-    required this.sessionId,
-    required this.roleName,
-    required this.score,
-    required this.recommendation,
-    required this.createdAt,
-  });
-
-  factory InterviewFeedbackSummaryModel.fromJson(Map<String, dynamic> json) =>
-      InterviewFeedbackSummaryModel(
-        sessionId: json['session_id'] as String? ?? '',
-        roleName: json['role_name'] as String? ?? '',
-        score: json['score'] as int? ?? 0,
-        recommendation: json['recommendation'] as String? ?? '',
-        createdAt: json['created_at'] != null
-            ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
-            : DateTime.now(),
-      );
-
-  InterviewFeedbackSummary toEntity() => InterviewFeedbackSummary(
-        sessionId: sessionId,
-        roleName: roleName,
-        score: score,
-        recommendation: recommendation,
-        createdAt: createdAt,
-      );
-}
-
-// ─── Feedback Detail Model ────────────────────────────────────────────────────
-
-class InterviewFeedbackDetailModel {
-  final String sessionId;
-  final String roleName;
-  final int score;
-  final String recommendation;
-  final List<String> strongPoints;
-  final List<String> areasForImprovement;
-  final String suggestions;
-  final DateTime createdAt;
-
-  const InterviewFeedbackDetailModel({
-    required this.sessionId,
-    required this.roleName,
-    required this.score,
-    required this.recommendation,
-    required this.strongPoints,
-    required this.areasForImprovement,
-    required this.suggestions,
-    required this.createdAt,
-  });
-
-  factory InterviewFeedbackDetailModel.fromJson(Map<String, dynamic> json) =>
-      InterviewFeedbackDetailModel(
-        sessionId: json['session_id'] as String? ?? '',
-        roleName: json['role_name'] as String? ?? '',
-        score: json['score'] as int? ?? 0,
-        recommendation: json['recommendation'] as String? ?? '',
-        strongPoints: _toList(json['strong_points']),
-        areasForImprovement: _toList(json['areas_for_improvement']),
-        suggestions: json['suggestions'] as String? ?? '',
-        createdAt: json['created_at'] != null
-            ? DateTime.tryParse(json['created_at'] as String) ?? DateTime.now()
-            : DateTime.now(),
-      );
-
-  InterviewFeedbackDetailEntity toEntity() => InterviewFeedbackDetailEntity(
-        sessionId: sessionId,
-        roleName: roleName,
-        score: score,
-        recommendation: recommendation,
-        strongPoints: strongPoints,
-        areasForImprovement: areasForImprovement,
-        suggestions: suggestions,
-        createdAt: createdAt,
-      );
-}
-
-List<String> _toList(dynamic value) {
-  if (value == null) return [];
-  if (value is List) return value.map((e) => e.toString()).toList();
-  return [];
+  static String _extractSectionText(String report, String section) {
+    final pattern = RegExp(
+      r'\*{1,2}' + section + r'\*{1,2}\s*\n(.*?)(?=\n\s*\*{1,2}|\s*$)',
+      dotAll: true,
+      caseSensitive: false,
+    );
+    final match = pattern.firstMatch(report);
+    if (match == null) return '';
+    return match
+        .group(1)!
+        .split('\n')
+        .map((l) => l.trim().replaceFirst(RegExp(r'^[-•*]\s*'), ''))
+        .where((l) => l.isNotEmpty)
+        .join('\n');
+  }
 }

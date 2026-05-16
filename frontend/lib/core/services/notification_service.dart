@@ -1,5 +1,6 @@
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationService {
   NotificationService._();
@@ -12,6 +13,13 @@ class NotificationService {
   static const _channelName = 'Interview Feedback';
   static const _channelDescription =
       'Notifications when your interview feedback is ready';
+
+  static const _prefNotificationsEnabled = 'notifications_enabled';
+
+  // ── Navigation callback ────────────────────────────────────────────────────
+  static void Function(String payload)? onNotificationTapCallback;
+
+  // ── Init ───────────────────────────────────────────────────────────────────
 
   Future<void> init() async {
     const androidSettings =
@@ -31,9 +39,9 @@ class NotificationService {
     await _plugin.initialize(
       initSettings,
       onDidReceiveNotificationResponse: _onNotificationTap,
+      onDidReceiveBackgroundNotificationResponse: _onNotificationTapBackground,
     );
 
-    // Create Android notification channel
     const channel = AndroidNotificationChannel(
       _channelId,
       _channelName,
@@ -45,7 +53,18 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
+
+    // ── Handle notification tap that launched the app ──────────────────────
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+    if (launchDetails?.didNotificationLaunchApp == true) {
+      final payload = launchDetails!.notificationResponse?.payload ?? 'alerts';
+      Future.delayed(const Duration(milliseconds: 2000), () {
+        onNotificationTapCallback?.call(payload);
+      });
+    }
   }
+
+  // ── Permissions ────────────────────────────────────────────────────────────
 
   Future<void> requestPermissions() async {
     await _plugin
@@ -59,9 +78,61 @@ class NotificationService {
         ?.requestNotificationsPermission();
   }
 
-  /// Call this when the backend signals that feedback is ready
+  // ── Toggle (Settings screen) ───────────────────────────────────────────────
+
+  Future<void> toggleNotifications(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefNotificationsEnabled, enabled);
+
+    if (!enabled) {
+      await _plugin.cancelAll();
+    }
+  }
+
+  Future<bool> isNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_prefNotificationsEnabled) ?? false;
+  }
+
+  Future<bool> isSystemPermissionGranted() async {
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidPlugin != null) {
+      return await androidPlugin.areNotificationsEnabled() ?? false;
+    }
+
+    return false;
+  }
+
+  // ── Show notifications ─────────────────────────────────────────────────────
+
   Future<void> showInterviewFeedbackReady({
     required String roleName,
+    required String sessionId,
+  }) async {
+    if (!await isNotificationsEnabled()) return;
+    await _showNotification(
+      title: 'Interview Feedback Ready! 🎉',
+      body: 'Your $roleName interview feedback is now available.',
+      payload: 'interview_feedback:$sessionId',
+    );
+  }
+
+  Future<void> showCustomNotification({
+    required String title,
+    required String body,
+  }) async {
+    if (!await isNotificationsEnabled()) return;
+    await _showNotification(title: title, body: body, payload: 'alerts');
+  }
+
+  // ── Private ────────────────────────────────────────────────────────────────
+
+  Future<void> _showNotification({
+    required String title,
+    required String body,
+    String payload = 'alerts',
   }) async {
     const androidDetails = AndroidNotificationDetails(
       _channelId,
@@ -85,18 +156,36 @@ class NotificationService {
 
     await _plugin.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      'Interview Feedback Ready! 🎉',
-      'Your $roleName interview feedback is now available. Tap to view.',
+      title,
+      body,
       details,
-      payload: 'interview_feedback',
+      payload: payload,
     );
   }
 
+  static bool _isHandlingTap = false;
+
   void _onNotificationTap(NotificationResponse response) {
-    // Navigation handled by app — the payload can be used by GoRouter
-    // You can use a GlobalKey<NavigatorState> or a NavigationService here
-    // For now the user taps and goes to /mock-interview
-    debugPrint(
-        'Notification tapped: ${response.payload}');
+    if (_isHandlingTap) return;
+    _isHandlingTap = true;
+
+    final payload = response.payload ?? '';
+    if (payload.startsWith('interview_feedback:')) {
+      final sessionId = payload.replaceFirst('interview_feedback:', '');
+      onNotificationTapCallback?.call('interview_feedback:$sessionId');
+    } else if (payload == 'career_plan') {
+      onNotificationTapCallback?.call('career_plan');
+    } else {
+      onNotificationTapCallback?.call('alerts');
+    }
+
+    Future.delayed(const Duration(seconds: 1), () {
+      _isHandlingTap = false;
+    });
   }
+}
+
+@pragma('vm:entry-point')
+void _onNotificationTapBackground(NotificationResponse response) {
+  debugPrint('Notification tapped (background): ${response.payload}');
 }

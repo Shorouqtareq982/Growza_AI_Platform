@@ -47,6 +47,7 @@ Pillow
 scikit-learn
 google-genai
 openai-whisper
+firebase-admin>=6.0.0
 
 # ===============================
 # Mock Interview ML (Inference + Notebooks)

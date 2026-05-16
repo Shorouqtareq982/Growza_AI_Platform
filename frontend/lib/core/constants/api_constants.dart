@@ -5,7 +5,9 @@ class ApiConstants {
   // Auth endpoints
   static const String verifyToken = '/auth/verify';
 
-  // CV Optimization endpoints
+  // ===============================
+  // CV Optimization
+  // ===============================
   static const String cvOptimization = '/api/v1/cv_optimization';
   static const String analyze = '$cvOptimization/analyze';
   static const String analyzeSaved = '$cvOptimization/analyze/'; // + cv_id
@@ -68,6 +70,27 @@ class ApiConstants {
   static String exportPortfolioPdf(String portfolioId) {
     return '$aiPortfolio/$portfolioId/export/pdf';
   }
+
+  // ===============
+  // Mock Interview
+  // ===============
+  static const String mockInterview = '/api/v1/mock-interview';
+
+  static const String mockInterviewStartBehavioral =
+      '$mockInterview/sessions/start/behavioral';
+  static const String mockInterviewStartTechnical =
+      '$mockInterview/sessions/start/technical';
+  static const String mockInterviewNotifyUpload =
+      '$mockInterview/notify-upload';
+
+  static String mockInterviewAudioStream(String questionId) =>
+      '$mockInterview/questions/$questionId/audio-stream';
+
+  static String mockInterviewBehavioralReport(String sessionId) =>
+      '$mockInterview/analysis/$sessionId/behavioral-report';
+
+  static String mockInterviewTechnicalReport(String sessionId) =>
+      '$mockInterview/analysis/$sessionId/technical-report';
 
   // Headers
   static const String authorization = 'Authorization';

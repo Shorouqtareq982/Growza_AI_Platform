@@ -105,7 +105,7 @@ class MockInterviewService:
             raise HTTPException(status_code=502, detail="ElevenLabs TTS failed")
 
     # ------------------------------------------------------------------ #
-    #  Behavioral pipeline — upload → process → delete blob               #
+    #  Behavioral pipeline — upload → process → notify → delete blob      #
     # ------------------------------------------------------------------ #
 
     async def queue_behavioral_upload(
@@ -116,14 +116,6 @@ class MockInterviewService:
         poll_interval_seconds: int = 5,
         min_size_bytes: int = 1024,
     ) -> None:
-        """
-        Called as a background task from the notify-upload endpoint.
-        Polls until the blob is ready, then hands off to the processing method.
-        The blob is always deleted when processing finishes (success or failure).
-        Status is NOT set here — claim_session_for_processing is the single
-        place that transitions the session to in_progress, keeping the duplicate
-        guard reliable.
-        """
         deadline = datetime.utcnow().timestamp() + max_wait_seconds
         while datetime.utcnow().timestamp() < deadline:
             if await self._is_blob_ready(blob_url, min_size_bytes=min_size_bytes):
@@ -131,14 +123,12 @@ class MockInterviewService:
                 return
             await asyncio.sleep(poll_interval_seconds)
 
-        # Blob never became ready — leave session as pending so the user can retry
         logger.warning("Behavioral blob not available before timeout; session left as pending")
 
     async def _process_behavioral_upload(self, session_id: UUID, blob_url: str) -> None:
-        """
-        Downloads the video, runs the behavioral pipeline, saves results,
-        then deletes the blob from Azure. Does NOT call the technical pipeline.
-        """
+        user_id: Optional[str] = None
+        role_name: Optional[str] = None
+
         try:
             session = await self.repo.get_session(session_id)
             if not session:
@@ -150,7 +140,8 @@ class MockInterviewService:
                 logger.info("Behavioral: session already in_progress/completed, skipping duplicate run")
                 return
 
-            role_name = None
+            user_id = session.get("user_id")
+
             try:
                 role = await self.repo.get_role_by_id(UUID(session["role_id"]))
                 if role:
@@ -173,26 +164,34 @@ class MockInterviewService:
                 analysis_metrics=behavioral_metrics,
                 behavioral_report=report,
                 transcript=transcript_text,
-                video_url=None,          # blob will be deleted; don't store a dead URL
+                video_url=None,
                 score=behavioral_score,
             )
 
             await self._safe_update_session_status(session_id, "completed")
             logger.info(f"Behavioral pipeline completed for session {session_id}")
 
+            if user_id:
+                asyncio.create_task(
+                    self._send_fcm_notification(
+                        session_id=session_id,
+                        user_id=user_id,
+                        role_name=role_name,
+                        session_type="behavioral",
+                    )
+                )
+
         except Exception:
             await self._safe_update_session_status(session_id, "pending")
             logger.exception(f"Behavioral pipeline failed for session {session_id}")
 
         finally:
-            # Always delete the blob — whether processing succeeded or failed
             deleted = await self._safe_delete_blob(blob_url)
-            # Explicitly log/print that the pipeline finished and deletion attempted
             logger.info(f"Behavioral pipeline finished for session {session_id}; blob deleted: {deleted}")
             print(f"Behavioral pipeline finished for session {session_id}; blob deleted: {deleted}")
 
     # ------------------------------------------------------------------ #
-    #  Technical pipeline — upload → process → delete blob                #
+    #  Technical pipeline — upload → process → notify → delete blob       #
     # ------------------------------------------------------------------ #
 
     async def queue_technical_upload(
@@ -203,14 +202,6 @@ class MockInterviewService:
         poll_interval_seconds: int = 5,
         min_size_bytes: int = 1024,
     ) -> None:
-        """
-        Called as a background task from the technical notify-upload endpoint.
-        Polls until the blob is ready, then hands off to the processing method.
-        The blob is always deleted when processing finishes (success or failure).
-        Status is NOT set here — claim_session_for_processing is the single
-        place that transitions the session to in_progress, keeping the duplicate
-        guard reliable.
-        """
         deadline = datetime.utcnow().timestamp() + max_wait_seconds
         while datetime.utcnow().timestamp() < deadline:
             if await self._is_blob_ready(blob_url, min_size_bytes=min_size_bytes):
@@ -218,15 +209,11 @@ class MockInterviewService:
                 return
             await asyncio.sleep(poll_interval_seconds)
 
-        # Blob never became ready — leave session as pending so the user can retry
         logger.warning("Technical blob not available before timeout; session left as pending")
 
     async def _process_technical_upload(self, session_id: UUID, blob_url: str) -> None:
-        """
-        Downloads the audio, transcribes it, extracts audio/text metrics,
-        generates the technical report, saves results, then deletes the blob.
-        Does NOT call the behavioral pipeline.
-        """
+        user_id: Optional[str] = None
+
         try:
             session = await self.repo.get_session(session_id)
             if not session:
@@ -237,6 +224,8 @@ class MockInterviewService:
             if not claimed:
                 logger.info("Technical: session already in_progress/completed, skipping duplicate run")
                 return
+
+            user_id = session.get("user_id")
 
             role = await self.repo.get_role_by_id(UUID(session["role_id"]))
             if not role:
@@ -265,6 +254,7 @@ class MockInterviewService:
                 or role.get("description")
                 or ""
             )
+            role_name = role.get("role_name") or "the role"
             questions_list = [q.get("question_text", "") for q in questions]
             metrics = await asyncio.to_thread(
                 self._run_technical_audio_metrics, audio_bytes, transcript_text
@@ -274,28 +264,108 @@ class MockInterviewService:
                 questions=questions_list,
                 user_response=transcript_text,
                 metrics=metrics,
-                role_name=role.get("role_name") or "the role",
+                role_name=role_name,
             )
 
             await self.repo.upsert_technical_analysis(
                 session_id=session_id,
                 technical_report=report,
                 transcript=transcript_text,
-                video_url=None,          # blob will be deleted; don't store a dead URL
+                video_url=None,
             )
 
             await self._safe_update_session_status(session_id, "completed")
             logger.info(f"Technical pipeline completed for session {session_id}")
+
+            if user_id:
+                asyncio.create_task(
+                    self._send_fcm_notification(
+                        session_id=session_id,
+                        user_id=user_id,
+                        role_name=role_name,
+                        session_type="technical",
+                    )
+                )
 
         except Exception:
             await self._safe_update_session_status(session_id, "pending")
             logger.exception(f"Technical pipeline failed for session {session_id}")
 
         finally:
-            # Always delete the blob — whether processing succeeded or failed
             deleted = await self._safe_delete_blob(blob_url)
             logger.info(f"Technical pipeline finished for session {session_id}; blob deleted: {deleted}")
             print(f"Technical pipeline finished for session {session_id}; blob deleted: {deleted}")
+
+    # ------------------------------------------------------------------ #
+    #  FCM Push Notification                                               #
+    # ------------------------------------------------------------------ #
+
+    async def _send_fcm_notification(
+        self,
+        session_id: UUID,
+        user_id: str,
+        role_name: Optional[str],
+        session_type: str,
+    ) -> None:
+        try:
+            import firebase_admin
+            from firebase_admin import credentials, messaging
+
+            if not firebase_admin._apps:
+                cred_path = getattr(settings, "FIREBASE_CREDENTIALS_PATH", "")
+                if not cred_path or not os.path.exists(cred_path):
+                    logger.warning(
+                        "FIREBASE_CREDENTIALS_PATH not set or file not found — skipping FCM notification"
+                    )
+                    return
+                cred = credentials.Certificate(cred_path)
+                firebase_admin.initialize_app(cred)
+
+            token_result = (
+                self.repo.client.table("user_fcm_tokens")
+                .select("fcm_token")
+                .eq("user_id", str(user_id))
+                .limit(1)
+                .execute()
+            )
+            if not token_result.data:
+                logger.info(f"No FCM token for user {user_id} — skipping notification")
+                return
+
+            fcm_token = token_result.data[0]["fcm_token"]
+            role_display = role_name or session_type.capitalize()
+
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title="Interview Feedback Ready! 🎉",
+                    body=f"Your {role_display} interview feedback is now available. Tap to view.",
+                ),
+                data={
+                    "session_id": str(session_id),
+                    "session_type": session_type,
+                    "type": "interview_feedback",
+                    "click_action": "FLUTTER_NOTIFICATION_CLICK",
+                },
+                android=messaging.AndroidConfig(
+                    priority="high",
+                    notification=messaging.AndroidNotification(
+                        channel_id="interview_feedback",
+                        icon="ic_launcher",
+                    ),
+                ),
+                apns=messaging.APNSConfig(
+                    payload=messaging.APNSPayload(
+                        aps=messaging.Aps(badge=1, sound="default"),
+                    ),
+                ),
+                token=fcm_token,
+            )
+
+            messaging.send(message)
+            logger.info(f"FCM notification sent successfully for session {session_id}")
+
+        except Exception as e:
+            logger.error(f"FCM notification failed for session {session_id}: {e}")
 
     # ------------------------------------------------------------------ #
     #  Read results                                                        #
@@ -381,7 +451,7 @@ class MockInterviewService:
             logger.debug(f"Blob readiness check failed: {e}")
             return False
 
-    async def _safe_delete_blob(self, blob_url: str) -> None:
+    async def _safe_delete_blob(self, blob_url: str) -> bool:
         try:
             credential = settings.STORAGE_ACCOUNT_KEY or None
             blob_client = BlobClient.from_blob_url(blob_url, credential=credential)
@@ -405,16 +475,13 @@ class MockInterviewService:
     # ------------------------------------------------------------------ #
 
     def _transcribe_video_bytes(self, video_bytes: bytes) -> str:
-        """Write bytes to a temp file, transcribe, return plain text."""
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
                 f.write(video_bytes)
                 temp_path = f.name
             transcript_text, _ = self.transcriber.transcribe_video_file(
-                temp_path,
-                max_wait_seconds=900,
-                poll_interval_seconds=5,
+                temp_path, max_wait_seconds=900, poll_interval_seconds=5,
             )
             return transcript_text or ""
         finally:
@@ -422,16 +489,13 @@ class MockInterviewService:
                 os.remove(temp_path)
 
     def _transcribe_audio_bytes(self, audio_bytes: bytes) -> str:
-        """Write bytes to a temp file, transcribe, return plain text."""
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
                 f.write(audio_bytes)
                 temp_path = f.name
             transcript_text, _ = self.transcriber.transcribe_video_file(
-                temp_path,
-                max_wait_seconds=900,
-                poll_interval_seconds=5,
+                temp_path, max_wait_seconds=900, poll_interval_seconds=5,
             )
             return transcript_text or ""
         finally:
@@ -449,23 +513,12 @@ class MockInterviewService:
                 "cuda" if behavioral_pipeline.torch.cuda.is_available() else "cpu"
             )
             (
-                vocab,
-                nlp,
-                smile,
-                audio_mins,
-                audio_denom,
-                visual,
-                audio,
-                text,
-                baseline,
-                siamese,
-                final,
+                vocab, nlp, smile, audio_mins, audio_denom,
+                visual, audio, text, baseline, siamese, final,
             ) = behavioral_pipeline.load_all_models(device)
 
             transcript_text, transcript_words = self.transcriber.transcribe_video_file(
-                temp_path,
-                max_wait_seconds=900,
-                poll_interval_seconds=5,
+                temp_path, max_wait_seconds=900, poll_interval_seconds=5,
             )
             if not transcript_text or not transcript_words:
                 raise RuntimeError("Transcription failed or missing word timestamps")

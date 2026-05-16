@@ -51,7 +51,13 @@ class _InterviewFeedbackScreenState
               child: Row(
                 children: [
                   IconButton(
-                    onPressed: () => context.pop(),
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/home');
+                      }
+                    },
                     icon: Icon(Icons.arrow_back_ios_new_rounded,
                         color: textPrimary, size: context.icon(20)),
                   ),
@@ -205,10 +211,11 @@ class _InterviewFeedbackScreenState
     showDialog(
       context: context,
       builder: (_) => SelectJobDialog(
-        onStart: (roleName, roleId) {
+        onStart: (roleName, roleId, sessionType) {
           context.push('/interview-session', extra: {
             'roleName': roleName,
             'roleId': roleId,
+            'sessionType': sessionType,
           });
         },
       ),
@@ -226,7 +233,7 @@ class _InterviewFeedbackScreenState
   }
 }
 
-// ─── Feedback Card ────────────────────────────────────────────────────────────
+// ─── Feedback Card — بدون Score ───────────────────────────────────────────────
 
 class _FeedbackCard extends StatelessWidget {
   final InterviewFeedbackSummary feedback;
@@ -248,8 +255,9 @@ class _FeedbackCard extends StatelessWidget {
     final borderColor =
         isDark ? AppColors.blue400.withOpacity(0.3) : AppColors.grey300;
     final textPrimary = isDark ? AppColors.grey50 : AppColors.blue900;
-    final textMuted = isDark ? AppColors.grey400 : AppColors.grey800;
     final dateColor = isDark ? AppColors.grey300 : AppColors.grey700;
+    final isBehavioral =
+        feedback.sessionType == InterviewSessionType.behavioral;
 
     return Container(
       padding: EdgeInsets.all(context.w(16)),
@@ -261,57 +269,40 @@ class _FeedbackCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Role + Score
+          // ── Role + Session Type Badge ───────────────────
           Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    context.text(feedback.roleName,
-                        style:
-                            textTheme.title2Bold.copyWith(color: textPrimary)),
-                    SizedBox(height: context.h(2)),
-                    context.text(feedback.recommendation,
-                        style: textTheme.captionRegular
-                            .copyWith(color: textMuted)),
-                  ],
+                child: context.text(
+                  feedback.roleName,
+                  style: textTheme.title2Bold.copyWith(color: textPrimary),
                 ),
               ),
               SizedBox(width: context.w(12)),
+              // Session type badge فقط — بدون score
               Container(
                 padding: EdgeInsets.symmetric(
-                    horizontal: context.w(14), vertical: context.h(8)),
+                    horizontal: context.w(10), vertical: context.h(4)),
                 decoration: BoxDecoration(
-                  color: isDark
+                  color: isBehavioral
                       ? AppColors.lightBlue500.withOpacity(0.15)
-                      : AppColors.lightBlue700.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(context.r(8)),
-                  border: Border.all(
-                      color: isDark
-                          ? AppColors.lightBlue500.withOpacity(0.4)
-                          : AppColors.lightBlue700.withOpacity(0.4)),
+                      : AppColors.purple500.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(context.r(20)),
                 ),
-                child: Column(
-                  children: [
-                    context.text('${feedback.score}%',
-                        style: textTheme.title2Bold.copyWith(
-                            color: isDark
-                                ? AppColors.lightBlue500
-                                : AppColors.lightBlue700)),
-                    context.text('Score',
-                        style: textTheme.captionRegular.copyWith(
-                            color: isDark
-                                ? AppColors.lightBlue500
-                                : AppColors.lightBlue700)),
-                  ],
+                child: context.text(
+                  isBehavioral ? 'Behavioral' : 'Technical',
+                  style: textTheme.captionBold.copyWith(
+                    color: isBehavioral
+                        ? AppColors.lightBlue500
+                        : AppColors.purple500,
+                  ),
                 ),
               ),
             ],
           ),
           SizedBox(height: context.h(10)),
 
-          // Date
+          // ── Date ─────────────────────────────────────────────────────
           Row(
             children: [
               Icon(Icons.calendar_today_outlined,
@@ -325,7 +316,7 @@ class _FeedbackCard extends StatelessWidget {
           ),
           SizedBox(height: context.h(12)),
 
-          // Actions
+          // ── Actions ───────────────────────────────────────────────────
           Row(
             children: [
               Expanded(
@@ -349,10 +340,8 @@ class _FeedbackCard extends StatelessWidget {
                 ),
               ),
               SizedBox(width: context.w(8)),
-              // Divider
               Container(width: 1, height: context.h(40), color: borderColor),
               SizedBox(width: context.w(8)),
-              // Delete
               GestureDetector(
                 onTap: onDelete,
                 child: Container(

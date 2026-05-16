@@ -1,32 +1,36 @@
-// ─── Interview Session Entity ─────────────────────────────────────────────────
+// ─── Session Types ────────────────────────────────────────────────────────────
 
-class InterviewSessionEntity {
-  final String sessionId;
-  final String roleName;
-  final String sasToken;
-  final List<InterviewQuestionEntity> questions;
-
-  const InterviewSessionEntity({
-    required this.sessionId,
-    required this.roleName,
-    required this.sasToken,
-    required this.questions,
-  });
-}
+enum InterviewSessionType { behavioral, technical }
 
 // ─── Interview Question Entity ────────────────────────────────────────────────
 
 class InterviewQuestionEntity {
   final String questionId;
   final String questionText;
-  final int orderIndex;
-  final int durationSeconds;
 
   const InterviewQuestionEntity({
     required this.questionId,
     required this.questionText,
-    required this.orderIndex,
-    this.durationSeconds = 30,
+  });
+}
+
+// ─── Interview Session Entity ─────────────────────────────────────────────────
+
+class InterviewSessionEntity {
+  final String sessionId;
+  final String sasToken;
+  final String blobUrl;
+  final DateTime sasExpiresAt;
+  final List<InterviewQuestionEntity> questions;
+  final InterviewSessionType sessionType;
+
+  const InterviewSessionEntity({
+    required this.sessionId,
+    required this.sasToken,
+    required this.blobUrl,
+    required this.sasExpiresAt,
+    required this.questions,
+    required this.sessionType,
   });
 }
 
@@ -35,16 +39,19 @@ class InterviewQuestionEntity {
 class InterviewFeedbackSummary {
   final String sessionId;
   final String roleName;
-  final int score;
-  final String recommendation;
+  final InterviewSessionType sessionType;
   final DateTime createdAt;
+  // Shown in the card — null until report is fetched
+  final int? score;
+  final String recommendation;
 
   const InterviewFeedbackSummary({
     required this.sessionId,
     required this.roleName,
-    required this.score,
-    required this.recommendation,
+    required this.sessionType,
     required this.createdAt,
+    this.score,
+    this.recommendation = '',
   });
 }
 
@@ -53,22 +60,28 @@ class InterviewFeedbackSummary {
 class InterviewFeedbackDetailEntity {
   final String sessionId;
   final String roleName;
-  final int score;
+  final InterviewSessionType sessionType;
+  final DateTime createdAt;
+  final int? score;
   final String recommendation;
   final List<String> strongPoints;
   final List<String> areasForImprovement;
   final String suggestions;
-  final DateTime createdAt;
+  final String? behavioralReport;
+  final String? technicalReport;
 
   const InterviewFeedbackDetailEntity({
     required this.sessionId,
     required this.roleName,
-    required this.score,
-    required this.recommendation,
+    required this.sessionType,
+    required this.createdAt,
+    this.score,
+    this.recommendation = '',
     required this.strongPoints,
     required this.areasForImprovement,
     required this.suggestions,
-    required this.createdAt,
+    this.behavioralReport,
+    this.technicalReport,
   });
 }
 

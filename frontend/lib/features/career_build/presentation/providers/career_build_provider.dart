@@ -9,6 +9,7 @@ import '../../../../core/services/app_notification_service.dart';
 import '../../../../core/services/career_build_cache_service.dart';
 import '../../data/models/career_build_models.dart';
 import '../../data/repositories/career_build_repository_impl.dart';
+import '../../../alerts/data/datasources/alerts_local_datasource.dart';
 
 /// ----------------------------
 /// UI MODELS
@@ -1483,6 +1484,11 @@ class CareerBuildNotifier extends Notifier<CareerBuildState> {
 
       await AppNotificationService.instance.showCareerPlanGenerated();
 
+      await AlertsStore.instance.addCareerPlanAlert(
+        planTitle: plan.trackName.isEmpty ? 'Career Plan' : plan.trackName,
+        planId: DateTime.now().millisecondsSinceEpoch.toString(),
+      );
+
       return true;
     } catch (e) {
       state = state.copyWith(
@@ -1740,6 +1746,13 @@ class CareerBuildNotifier extends Notifier<CareerBuildState> {
       );
 
       await AppNotificationService.instance.showCareerPlanRegenerated();
+
+      await AlertsStore.instance.addCareerPlanRegeneratedAlert(
+        planTitle: regenerated.trackName.isEmpty
+            ? 'Career Plan'
+            : regenerated.trackName,
+        planId: DateTime.now().millisecondsSinceEpoch.toString(),
+      );
 
       return true;
     } catch (e) {
