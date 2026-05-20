@@ -33,13 +33,14 @@ class MarketInsightsResultsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 430),
+        constraints: const BoxConstraints(maxWidth: 343),
         child: Column(
           children: [
             _ResultsHeader(
-              title: '${data.jobTitle} — Market Insights',
+              title: 'Market Insights',
+              trackTitle: data.jobTitle,
               subtitle:
-                  'Live backend crawler result based on the selected market track',
+                  'Live crawler result based on the selected market track',
               onChangeRole: onChangeRole,
               onRefresh: onRefresh,
             ),
@@ -71,7 +72,7 @@ class MarketInsightsResultsSection extends StatelessWidget {
                   : const _UnavailableCard(
                       title: 'Demand by Experience Level',
                       message:
-                          'Experience distribution is not available for this track yet.',
+                          'The current backend job-status endpoint returns job name, loading state, completion state, and rows count only.',
                     ),
             ),
             SizedBox(height: context.h(16)),
@@ -85,7 +86,7 @@ class MarketInsightsResultsSection extends StatelessWidget {
                   : const _UnavailableCard(
                       title: 'Top Required Job Skills',
                       message:
-                          'Skills breakdown is not available for this track yet.',
+                          'Skills breakdown is not returned by the current market endpoints yet.',
                     ),
             ),
             SizedBox(height: context.h(16)),
@@ -97,9 +98,9 @@ class MarketInsightsResultsSection extends StatelessWidget {
                       animationSeed: animationSeed,
                     )
                   : const _UnavailableCard(
-                      title: 'Demand Over the Year',
+                      title: 'Demand Over the Month',
                       message:
-                          'Monthly demand points are not available for this track yet.',
+                          'Yearly demand chart is ready in the UI, but the backend does not send monthly demand points yet.',
                     ),
             ),
             SizedBox(height: context.h(16)),
@@ -113,7 +114,7 @@ class MarketInsightsResultsSection extends StatelessWidget {
                   : const _UnavailableCard(
                       title: 'Top 5 Hiring Governorates',
                       message:
-                          'Governorate distribution is not available for this track yet.',
+                          'Governorate distribution is not returned by the current market endpoints yet.',
                     ),
             ),
           ],
@@ -153,12 +154,14 @@ class _AnimatedEntry extends StatelessWidget {
 
 class _ResultsHeader extends StatelessWidget {
   final String title;
+  final String trackTitle;
   final String subtitle;
   final VoidCallback onChangeRole;
   final VoidCallback onRefresh;
 
   const _ResultsHeader({
     required this.title,
+    required this.trackTitle,
     required this.subtitle,
     required this.onChangeRole,
     required this.onRefresh,
@@ -176,17 +179,28 @@ class _ResultsHeader extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
             style: context.responsiveText(
               textTheme.title1Bold.copyWith(
                 color: isDark ? AppColors.grey100 : AppColors.blue900,
                 fontSize: 19,
-                height: 1.18,
               ),
             ),
           ),
-          SizedBox(height: context.h(12)),
+          SizedBox(height: context.h(8)),
+          Text(
+            trackTitle,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: context.responsiveText(
+              textTheme.title2Bold.copyWith(
+                color: isDark ? AppColors.lightBlue500 : AppColors.lightBlue700,
+                fontSize: 16,
+                height: 1.25,
+              ),
+            ),
+          ),
+          SizedBox(height: context.h(8)),
           Text(
             subtitle,
             textAlign: TextAlign.center,
@@ -195,13 +209,14 @@ class _ResultsHeader extends StatelessWidget {
             style: context.responsiveText(
               textTheme.title2Medium.copyWith(
                 color: isDark ? AppColors.blue200 : AppColors.grey800,
-                fontSize: 15,
+                fontSize: 14.5,
                 height: 1.35,
               ),
             ),
           ),
           SizedBox(height: context.h(16)),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
                 child: _ActionButton(
@@ -260,10 +275,10 @@ class _ActionButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(context.r(50)),
       child: Container(
-        constraints: BoxConstraints(minHeight: context.h(40)),
+        constraints: BoxConstraints(minHeight: context.h(38)),
         padding: EdgeInsets.symmetric(
           horizontal: context.w(10),
-          vertical: context.h(9),
+          vertical: context.h(8),
         ),
         decoration: BoxDecoration(
           color: bg,
@@ -274,20 +289,17 @@ class _ActionButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: context.icon(16), color: textColor),
-            SizedBox(width: context.w(7)),
+            SizedBox(width: context.w(8)),
             Flexible(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  text,
-                  maxLines: 1,
-                  style: TextStyle(
-                    color: textColor,
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    height: 1.15,
-                  ),
+              child: Text(
+                text,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: textColor,
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2,
                 ),
               ),
             ),
@@ -313,53 +325,46 @@ class _CrawlerResultCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(
-        horizontal: context.w(16),
-        vertical: context.h(16),
-      ),
+      padding: EdgeInsets.all(context.w(16)),
       decoration: _cardDecoration(context, isDark),
       child: Row(
         children: [
           Container(
-            width: context.w(48),
-            height: context.w(48),
-            decoration: BoxDecoration(
+            width: context.w(42),
+            height: context.h(42),
+            decoration: const BoxDecoration(
               color: AppColors.lightBlue100,
-              borderRadius: BorderRadius.circular(context.r(14)),
+              shape: BoxShape.circle,
             ),
             alignment: Alignment.center,
             child: Icon(
               Icons.check_circle_outline_rounded,
               color: AppColors.lightBlue700,
-              size: context.icon(29),
+              size: context.icon(24),
             ),
           ),
-          SizedBox(width: context.w(13)),
+          SizedBox(width: context.w(12)),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Crawler completed',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: isDark ? AppColors.grey100 : AppColors.blue900,
                     fontFamily: 'Inter',
-                    fontSize: context.sp(15.5),
-                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                     height: 1.2,
                   ),
                 ),
-                SizedBox(height: context.h(5)),
+                SizedBox(height: context.h(4)),
                 Text(
-                  '${_formatNumber(jobOpenings)} jobs found for $jobTitle.',
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                  '$jobOpenings jobs found for $jobTitle.',
                   style: TextStyle(
                     color: isDark ? AppColors.blue200 : AppColors.grey800,
                     fontFamily: 'Inter',
-                    fontSize: context.sp(12.5),
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                     height: 1.4,
                   ),
@@ -386,62 +391,77 @@ class _ResultsOverview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 92,
-          child: Column(
-            children: [
-              _MiniMetricCard(
-                iconPath: 'assets/images/market_insights/job_open.png',
-                title: 'Job Openings',
-                value: _AnimatedNumberText(
-                  value: data.jobOpenings.toDouble(),
-                  animationSeed: animationSeed,
-                  formatCommas: true,
-                  style: _valueStyle(context),
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale =
+            constraints.maxWidth < 343 ? constraints.maxWidth / 343 : 1.0;
+
+        final leftWidth = 156.0 * scale;
+        final rightWidth = 175.0 * scale;
+        final gap = 12.0 * scale;
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: leftWidth,
+              child: Column(
+                children: [
+                  _MiniMetricCard(
+                    scale: scale,
+                    iconPath: 'assets/images/market_insights/job_open.png',
+                    title: 'Job Openings',
+                    value: _AnimatedNumberText(
+                      value: data.jobOpenings.toDouble(),
+                      animationSeed: animationSeed,
+                      formatCommas: true,
+                      style: _valueStyle(context),
+                    ),
+                  ),
+                  SizedBox(height: context.h(12) * scale),
+                  _MiniMetricCard(
+                    scale: scale,
+                    iconPath: 'assets/images/market_insights/market_growth.png',
+                    title: 'Market Growth',
+                    value: Text(
+                      data.marketGrowthPercent > 0
+                          ? '+${data.marketGrowthPercent}%'
+                          : 'N/A',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _valueStyle(context),
+                    ),
+                  ),
+                  SizedBox(height: context.h(12) * scale),
+                  _MiniMetricCard(
+                    scale: scale,
+                    iconPath: 'assets/images/market_insights/avg_exp.png',
+                    title: 'Avg. Experience',
+                    value: Text(
+                      data.avgExperienceYears > 0
+                          ? '${data.avgExperienceYears.toStringAsFixed(1)} Years'
+                          : 'N/A',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _valueStyle(context),
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: context.h(12)),
-              _MiniMetricCard(
-                iconPath: 'assets/images/market_insights/market_growth.png',
-                title: 'Market Growth',
-                value: Text(
-                  data.marketGrowthPercent > 0
-                      ? '+${data.marketGrowthPercent}%'
-                      : 'N/A',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _valueStyle(context),
-                ),
+            ),
+            SizedBox(width: gap),
+            SizedBox(
+              width: rightWidth,
+              child: _SalaryInsightsCard(
+                data: data.salaryInsights,
+                animationSeed: animationSeed,
+                scale: scale,
+                hasData: hasSalaryData,
               ),
-              SizedBox(height: context.h(12)),
-              _MiniMetricCard(
-                iconPath: 'assets/images/market_insights/avg_exp.png',
-                title: 'Avg. Experience',
-                value: Text(
-                  data.avgExperienceYears > 0
-                      ? '${data.avgExperienceYears.toStringAsFixed(1)} Years'
-                      : 'N/A',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _valueStyle(context),
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(width: context.w(12)),
-        Expanded(
-          flex: 108,
-          child: _SalaryInsightsCard(
-            data: data.salaryInsights,
-            animationSeed: animationSeed,
-            hasData: hasSalaryData,
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -450,11 +470,13 @@ class _MiniMetricCard extends StatelessWidget {
   final String iconPath;
   final String title;
   final Widget value;
+  final double scale;
 
   const _MiniMetricCard({
     required this.iconPath,
     required this.title,
     required this.value,
+    required this.scale,
   });
 
   @override
@@ -463,17 +485,20 @@ class _MiniMetricCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(minHeight: context.h(80)),
+      constraints: BoxConstraints(minHeight: 58 * scale),
       padding: EdgeInsets.symmetric(
-        horizontal: context.w(11),
-        vertical: context.h(11),
+        horizontal: 10 * scale,
+        vertical: 8 * scale,
       ),
       decoration: _cardDecoration(context, isDark),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _IconTile(iconPath: iconPath),
-          SizedBox(width: context.w(10)),
+          _IconTile(
+            iconPath: iconPath,
+            scale: scale,
+          ),
+          SizedBox(width: 8 * scale),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -486,12 +511,12 @@ class _MiniMetricCard extends StatelessWidget {
                   style: TextStyle(
                     color: isDark ? AppColors.grey100 : AppColors.blue900,
                     fontFamily: 'Inter',
-                    fontSize: context.sp(12.8),
-                    fontWeight: FontWeight.w700,
+                    fontSize: 12.2 * scale,
+                    fontWeight: FontWeight.w600,
                     height: 1.12,
                   ),
                 ),
-                SizedBox(height: context.h(5)),
+                SizedBox(height: 4 * scale),
                 DefaultTextStyle.merge(
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -509,11 +534,13 @@ class _MiniMetricCard extends StatelessWidget {
 class _SalaryInsightsCard extends StatelessWidget {
   final SalaryInsights data;
   final int animationSeed;
+  final double scale;
   final bool hasData;
 
   const _SalaryInsightsCard({
     required this.data,
     required this.animationSeed,
+    required this.scale,
     required this.hasData,
   });
 
@@ -523,7 +550,7 @@ class _SalaryInsightsCard extends StatelessWidget {
         'N/A',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: _valueStyle(context),
+        style: _valueStyle(context, scale: scale),
       );
     }
 
@@ -533,7 +560,7 @@ class _SalaryInsightsCard extends StatelessWidget {
       prefix: '\$',
       suffix: ' / month',
       formatCommas: true,
-      style: _valueStyle(context),
+      style: _valueStyle(context, scale: scale),
     );
   }
 
@@ -543,31 +570,34 @@ class _SalaryInsightsCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      constraints: BoxConstraints(minHeight: context.h(228)),
+      constraints: BoxConstraints(minHeight: 183 * scale),
       padding: EdgeInsets.symmetric(
-        horizontal: context.w(14),
-        vertical: context.h(15),
+        horizontal: 12 * scale,
+        vertical: 12 * scale,
       ),
       decoration: _cardDecoration(context, isDark),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SalaryTitleRow(),
-          SizedBox(height: context.h(14)),
+          _SalaryTitleRow(scale: scale),
+          SizedBox(height: 10 * scale),
           _SalaryRow(
+            scale: scale,
             iconPath: 'assets/images/market_insights/max_salary.png',
             label: 'Maximum Salary',
             value: _salaryValue(context, data.maxMonthlySalary),
           ),
-          SizedBox(height: context.h(12)),
+          SizedBox(height: 8 * scale),
           _SalaryRow(
+            scale: scale,
             iconPath: 'assets/images/market_insights/avg_salary.png',
             label: 'Average Salary',
             value: _salaryValue(context, data.avgMonthlySalary),
           ),
-          SizedBox(height: context.h(12)),
+          SizedBox(height: 8 * scale),
           _SalaryRow(
+            scale: scale,
             iconPath: 'assets/images/market_insights/min_salary.png',
             label: 'Minimum Salary',
             value: _salaryValue(context, data.minMonthlySalary),
@@ -579,7 +609,11 @@ class _SalaryInsightsCard extends StatelessWidget {
 }
 
 class _SalaryTitleRow extends StatelessWidget {
-  const _SalaryTitleRow();
+  final double scale;
+
+  const _SalaryTitleRow({
+    required this.scale,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -587,11 +621,11 @@ class _SalaryTitleRow extends StatelessWidget {
 
     return Row(
       children: [
-        const _IconTile(
+        _IconTile(
           iconPath: 'assets/images/market_insights/salary_insights.png',
-          large: true,
+          scale: scale,
         ),
-        SizedBox(width: context.w(10)),
+        SizedBox(width: 8 * scale),
         Expanded(
           child: Text(
             'Salary Insights',
@@ -600,8 +634,8 @@ class _SalaryTitleRow extends StatelessWidget {
             style: TextStyle(
               color: isDark ? AppColors.grey100 : AppColors.blue900,
               fontFamily: 'Inter',
-              fontSize: context.sp(16),
-              fontWeight: FontWeight.w800,
+              fontSize: 15.5 * scale,
+              fontWeight: FontWeight.w600,
               height: 1.12,
             ),
           ),
@@ -615,11 +649,13 @@ class _SalaryRow extends StatelessWidget {
   final String iconPath;
   final String label;
   final Widget value;
+  final double scale;
 
   const _SalaryRow({
     required this.iconPath,
     required this.label,
     required this.value,
+    required this.scale,
   });
 
   @override
@@ -627,13 +663,14 @@ class _SalaryRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _IconTile(iconPath: iconPath),
-        SizedBox(width: context.w(10)),
+        _IconTile(
+          iconPath: iconPath,
+          scale: scale,
+        ),
+        SizedBox(width: 8 * scale),
         Expanded(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -643,17 +680,13 @@ class _SalaryRow extends StatelessWidget {
                 style: TextStyle(
                   color: isDark ? AppColors.grey100 : AppColors.blue900,
                   fontFamily: 'Inter',
-                  fontSize: context.sp(12.5),
-                  fontWeight: FontWeight.w700,
-                  height: 1.12,
+                  fontSize: 12.2 * scale,
+                  fontWeight: FontWeight.w500,
+                  height: 1.2,
                 ),
               ),
-              SizedBox(height: context.h(3)),
-              DefaultTextStyle.merge(
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                child: value,
-              ),
+              SizedBox(height: 2 * scale),
+              value,
             ],
           ),
         ),
@@ -664,24 +697,28 @@ class _SalaryRow extends StatelessWidget {
 
 class _IconTile extends StatelessWidget {
   final String iconPath;
+  final double scale;
   final bool large;
 
   const _IconTile({
     required this.iconPath,
+    this.scale = 1,
     this.large = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final tileSize = large ? context.w(46) : context.w(42);
-    final iconSize = large ? context.icon(27) : context.icon(24);
+    final tileSize = large ? context.w(46) : (30 * scale);
+    final iconSize = large ? context.icon(27) : (16 * scale);
 
     return Container(
       width: tileSize,
       height: tileSize,
       decoration: BoxDecoration(
         color: AppColors.lightBlue100,
-        borderRadius: BorderRadius.circular(context.r(12)),
+        borderRadius: BorderRadius.circular(
+          large ? context.r(12) : (8 * scale),
+        ),
       ),
       alignment: Alignment.center,
       child: Image.asset(
@@ -727,15 +764,9 @@ class _ExperienceCard extends StatelessWidget {
         color: intermediateColor,
       ),
       _ChartSlice(
-        label: 'Senior',
-        value: getValue('Senior'),
-        color: seniorColor,
-      ),
+          label: 'Senior', value: getValue('Senior'), color: seniorColor),
       _ChartSlice(
-        label: 'Expert',
-        value: getValue('Expert'),
-        color: expertColor,
-      ),
+          label: 'Expert', value: getValue('Expert'), color: expertColor),
     ];
 
     return Container(
@@ -744,7 +775,17 @@ class _ExperienceCard extends StatelessWidget {
       decoration: _cardDecoration(context, isDark),
       child: Column(
         children: [
-          const _SectionTitle('Demand by Experience Level'),
+          Text(
+            'Demand by Experience Level',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isDark ? AppColors.grey100 : AppColors.blue900,
+              fontFamily: 'Inter',
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
           SizedBox(height: context.h(24)),
           _InteractiveDonutChart(
             slices: chartData,
@@ -789,7 +830,17 @@ class _SkillsCard extends StatelessWidget {
       decoration: _cardDecoration(context, isDark),
       child: Column(
         children: [
-          const _SectionTitle('Top Required Job Skills'),
+          Text(
+            'Top Required Job Skills',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isDark ? AppColors.grey100 : AppColors.blue900,
+              fontFamily: 'Inter',
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
           SizedBox(height: context.h(16)),
           ...skills.asMap().entries.map(
             (entry) {
@@ -835,7 +886,17 @@ class _DemandOverYearCard extends StatelessWidget {
       decoration: _cardDecoration(context, isDark),
       child: Column(
         children: [
-          const _SectionTitle('Demand Over the Year'),
+          Text(
+            'Demand Over the Month',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isDark ? AppColors.grey100 : AppColors.blue900,
+              fontFamily: 'Inter',
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
           SizedBox(height: context.h(16)),
           _InteractiveAreaChart(
             points: points,
@@ -870,7 +931,17 @@ class _GovernoratesCard extends StatelessWidget {
       decoration: _cardDecoration(context, isDark),
       child: Column(
         children: [
-          const _SectionTitle('Top 5 Hiring Governorates'),
+          Text(
+            'Top 5 Hiring Governorates',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isDark ? AppColors.grey100 : AppColors.blue900,
+              fontFamily: 'Inter',
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
           SizedBox(height: context.h(16)),
           ...governorates.asMap().entries.map(
             (entry) {
@@ -897,31 +968,6 @@ class _GovernoratesCard extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String text;
-
-  const _SectionTitle(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    return Text(
-      text,
-      textAlign: TextAlign.center,
-      maxLines: 3,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        color: isDark ? AppColors.grey100 : AppColors.blue900,
-        fontFamily: 'Inter',
-        fontSize: context.sp(19),
-        fontWeight: FontWeight.w800,
-        height: 1.2,
-      ),
-    );
-  }
-}
-
 class _UnavailableCard extends StatelessWidget {
   final String title;
   final String message;
@@ -941,23 +987,31 @@ class _UnavailableCard extends StatelessWidget {
       decoration: _cardDecoration(context, isDark),
       child: Column(
         children: [
-          _SectionTitle(title),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isDark ? AppColors.grey100 : AppColors.blue900,
+              fontFamily: 'Inter',
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
           SizedBox(height: context.h(12)),
           Icon(
             Icons.insights_outlined,
             color: isDark ? AppColors.lightBlue500 : AppColors.lightBlue700,
-            size: context.icon(34),
+            size: context.icon(30),
           ),
           SizedBox(height: context.h(10)),
           Text(
             message,
             textAlign: TextAlign.center,
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: isDark ? AppColors.blue200 : AppColors.grey800,
               fontFamily: 'Inter',
-              fontSize: context.sp(13),
+              fontSize: 13,
               fontWeight: FontWeight.w500,
               height: 1.4,
             ),
@@ -1148,7 +1202,7 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
 
   @override
   Widget build(BuildContext context) {
-    const chartHeight = 165.0;
+    const chartHeight = 215.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -1187,24 +1241,24 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
                     );
                   },
                 ),
-                if (selectedIndex != null)
+                if (selectedIndex != null && pointOffsets.isNotEmpty)
                   Builder(
                     builder: (context) {
                       final point = pointOffsets[selectedIndex!];
                       final monthData = widget.points[selectedIndex!];
 
-                      double left = point.dx - 36;
+                      double left = point.dx - 42;
                       if (left < 0) left = 0;
-                      if (left > width - 82) left = width - 82;
+                      if (left > width - 92) left = width - 92;
 
-                      double top = point.dy - 44;
-                      if (top < 4) top = point.dy + 10;
+                      double top = point.dy - 48;
+                      if (top < 4) top = point.dy + 12;
 
                       return Positioned(
                         left: left,
                         top: top,
                         child: Container(
-                          width: 82,
+                          width: 92,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
                             vertical: 6,
@@ -1226,6 +1280,8 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
                             children: [
                               Text(
                                 monthData.month,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: AppColors.blue900,
                                   fontFamily: 'Inter',
@@ -1235,11 +1291,13 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                'Job Postings: ${_formatNumber(monthData.value)}',
+                                'Jobs: ${_formatNumber(monthData.value)}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   color: AppColors.blue900,
                                   fontFamily: 'Inter',
-                                  fontSize: 8.5,
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -1262,18 +1320,19 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
     double height,
     List<MonthlyDemandPoint> points,
   ) {
-    const leftPadding = 28.0;
-    const rightPadding = 10.0;
-    const topPadding = 10.0;
-    const bottomPadding = 26.0;
+    if (points.isEmpty) return [];
+
+    const leftPadding = 32.0;
+    const rightPadding = 14.0;
+    const topPadding = 12.0;
+    const bottomPadding = 60.0;
 
     final chartWidth = width - leftPadding - rightPadding;
     final chartHeight = height - topPadding - bottomPadding;
     final plotBottom = topPadding + chartHeight;
-    final maxPoint = points.isEmpty
-        ? 1.0
-        : points.map((e) => e.value).reduce(math.max).toDouble();
-    final maxY = math.max(20000.0, maxPoint);
+
+    final maxPoint = points.map((e) => e.value).reduce(math.max).toDouble();
+    final maxY = math.max(1.0, maxPoint * 1.18);
 
     final dxStep = points.length > 1 ? chartWidth / (points.length - 1) : 0.0;
 
@@ -1297,7 +1356,7 @@ class _InteractiveAreaChartState extends State<_InteractiveAreaChart> {
       }
     }
 
-    if (minDistance > 22) return null;
+    if (minDistance > 24) return null;
     return selected;
   }
 }
@@ -1329,13 +1388,11 @@ class _ProgressMetricRow extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: isDark ? AppColors.grey100 : AppColors.blue900,
                   fontFamily: 'Inter',
-                  fontSize: context.sp(11.5),
-                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                   height: 1.2,
                 ),
               ),
@@ -1343,13 +1400,11 @@ class _ProgressMetricRow extends StatelessWidget {
             SizedBox(width: context.w(8)),
             Text(
               valueText,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: isDark ? AppColors.blue200 : AppColors.grey800,
                 fontFamily: 'Inter',
-                fontSize: context.sp(11.5),
-                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
                 height: 1.2,
               ),
             ),
@@ -1367,13 +1422,13 @@ class _ProgressMetricRow extends StatelessWidget {
               child: Stack(
                 children: [
                   Container(
-                    height: context.h(7),
+                    height: context.h(6),
                     color: isDark ? AppColors.blue300 : AppColors.grey300,
                   ),
                   FractionallySizedBox(
                     widthFactor: value,
                     child: Container(
-                      height: context.h(7),
+                      height: context.h(6),
                       color: isDark
                           ? AppColors.lightBlue500
                           : AppColors.lightBlue700,
@@ -1416,13 +1471,11 @@ class _LegendItem extends StatelessWidget {
         SizedBox(width: context.w(4)),
         Text(
           label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: isDark ? AppColors.grey100 : AppColors.blue900,
             fontFamily: 'Inter',
-            fontSize: context.sp(13),
-            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
             height: 1.2,
           ),
         ),
@@ -1568,32 +1621,40 @@ class _AreaChartPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty) return;
 
-    const leftPadding = 28.0;
-    const rightPadding = 10.0;
-    const topPadding = 10.0;
-    const bottomPadding = 26.0;
+    const leftPadding = 32.0;
+    const rightPadding = 14.0;
+    const topPadding = 12.0;
+    const bottomPadding = 60.0;
 
     final chartWidth = size.width - leftPadding - rightPadding;
     final chartHeight = size.height - topPadding - bottomPadding;
     final plotLeft = leftPadding;
     final plotTop = topPadding;
     final plotBottom = plotTop + chartHeight;
+
     final maxPoint = points.map((e) => e.value).reduce(math.max).toDouble();
-    final maxY = math.max(20000.0, maxPoint);
+    final maxY = math.max(1.0, maxPoint * 1.18);
 
     final gridPaint = Paint()
       ..color = isDark ? AppColors.blue300.withOpacity(0.45) : AppColors.grey300
       ..strokeWidth = 1;
 
     final dottedPaint = Paint()
-      ..color = isDark ? AppColors.blue300.withOpacity(0.45) : AppColors.grey300
+      ..color = isDark ? AppColors.blue300.withOpacity(0.35) : AppColors.grey300
       ..strokeWidth = 1;
 
     final axisTextColor = isDark ? AppColors.blue200 : AppColors.grey800;
 
-    const yLabels = ['0k', '5k', '10k', '15k', '20k'];
-    for (int i = 0; i < yLabels.length; i++) {
-      final ratio = i / (yLabels.length - 1);
+    final yValues = <double>[
+      0,
+      maxY * 0.25,
+      maxY * 0.50,
+      maxY * 0.75,
+      maxY,
+    ];
+
+    for (int i = 0; i < yValues.length; i++) {
+      final ratio = i / (yValues.length - 1);
       final y = plotBottom - (ratio * chartHeight);
 
       canvas.drawLine(
@@ -1603,44 +1664,50 @@ class _AreaChartPainter extends CustomPainter {
       );
 
       final tp = _textPainter(
-        yLabels[i],
+        _formatAxisNumber(yValues[i]),
         TextStyle(
           color: axisTextColor,
           fontSize: 9,
           fontWeight: FontWeight.w500,
           fontFamily: 'Inter',
         ),
-      )..layout();
+      )..layout(maxWidth: leftPadding - 4);
 
       tp.paint(canvas, Offset(0, y - (tp.height / 2)));
     }
 
     final dxStep = points.length > 1 ? chartWidth / (points.length - 1) : 0.0;
+    const labelStep = 1;
 
     for (int i = 0; i < points.length; i++) {
       final x = plotLeft + (dxStep * i);
+      final shouldShowLabel =
+          i == 0 || i == points.length - 1 || i % labelStep == 0;
 
-      _drawDashedLine(
-        canvas,
-        Offset(x, plotTop),
-        Offset(x, plotBottom),
-        dottedPaint,
-      );
+      if (shouldShowLabel) {
+        _drawDashedLine(
+          canvas,
+          Offset(x, plotTop),
+          Offset(x, plotBottom),
+          dottedPaint,
+        );
 
-      final tp = _textPainter(
-        points[i].month,
-        TextStyle(
-          color: axisTextColor,
-          fontSize: 9,
-          fontWeight: FontWeight.w500,
-          fontFamily: 'Inter',
-        ),
-      )..layout();
+        final tp = _textPainter(
+          points[i].month,
+          TextStyle(
+            color: axisTextColor,
+            fontSize: 7.2,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Inter',
+          ),
+        )..layout();
 
-      tp.paint(
-        canvas,
-        Offset(x - (tp.width / 2), plotBottom + 6),
-      );
+        canvas.save();
+        canvas.translate(x - 2, plotBottom + 18);
+        canvas.rotate(-math.pi / 3);
+        tp.paint(canvas, Offset(-tp.width / 2, 0));
+        canvas.restore();
+      }
     }
 
     final linePath = Path();
@@ -1700,13 +1767,20 @@ class _AreaChartPainter extends CustomPainter {
 
     for (int i = 0; i < pointOffsets.length; i++) {
       final point = pointOffsets[i];
-      canvas.drawCircle(point, 3, pointPaint);
+      final shouldDrawPoint = i == 0 ||
+          i == points.length - 1 ||
+          i == selectedIndex ||
+          i % labelStep == 0;
+
+      if (shouldDrawPoint) {
+        canvas.drawCircle(point, i == selectedIndex ? 4.5 : 3, pointPaint);
+      }
 
       if (selectedIndex == i) {
         final selectedPaint = Paint()
           ..color = Colors.black87
           ..style = PaintingStyle.fill;
-        canvas.drawCircle(point, 4.5, selectedPaint);
+        canvas.drawCircle(point, 4.8, selectedPaint);
       }
     }
   }
@@ -1743,6 +1817,22 @@ class _AreaChartPainter extends CustomPainter {
   }
 }
 
+String _formatAxisNumber(num value) {
+  final rounded = value.round();
+
+  if (rounded >= 1000000) {
+    final number = rounded / 1000000;
+    return '${number.toStringAsFixed(number >= 10 ? 0 : 1)}m';
+  }
+
+  if (rounded >= 1000) {
+    final number = rounded / 1000;
+    return '${number.toStringAsFixed(number >= 10 ? 0 : 1)}k';
+  }
+
+  return rounded.toString();
+}
+
 TextPainter _textPainter(String text, TextStyle style) {
   return TextPainter(
     text: TextSpan(text: text, style: style),
@@ -1753,35 +1843,35 @@ TextPainter _textPainter(String text, TextStyle style) {
 BoxDecoration _cardDecoration(BuildContext context, bool isDark) {
   return BoxDecoration(
     color: isDark ? AppColors.blue700 : AppColors.grey50,
-    borderRadius: BorderRadius.circular(context.r(14)),
+    borderRadius: BorderRadius.circular(context.r(12)),
     border: Border.all(
       color: isDark
-          ? AppColors.grey300.withOpacity(0.24)
-          : AppColors.grey800.withOpacity(0.12),
-      width: 1,
+          ? AppColors.grey300.withOpacity(0.28)
+          : AppColors.grey800.withOpacity(0.14),
+      width: isDark ? 0.7 : 1,
     ),
     boxShadow: [
       BoxShadow(
         color: isDark
-            ? AppColors.blue200.withOpacity(0.18)
-            : Colors.black.withOpacity(0.08),
-        blurRadius: context.r(12),
+            ? AppColors.blue200.withOpacity(0.22)
+            : Colors.black.withOpacity(0.10),
+        blurRadius: context.r(10),
         spreadRadius: 0,
-        offset: Offset(0, context.r(5)),
+        offset: Offset(context.r(3), context.r(4)),
       ),
     ],
   );
 }
 
-TextStyle _valueStyle(BuildContext context) {
+TextStyle _valueStyle(BuildContext context, {double scale = 1}) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
 
   return TextStyle(
     color: isDark ? AppColors.blue200 : AppColors.grey800,
     fontFamily: 'Inter',
-    fontSize: context.sp(12.2),
-    fontWeight: FontWeight.w800,
-    height: 1.12,
+    fontSize: 11 * scale,
+    fontWeight: FontWeight.w700,
+    height: 1.2,
   );
 }
 
