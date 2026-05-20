@@ -11,6 +11,7 @@ from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.text.run import Run
 from sklearn.cluster import KMeans
+from ..helpers.multi_column import column_boxes
 
 from shared.helpers.file_validation import FileValidator
 from ..schemas.layout_analysis_schema import CVLayoutAnalysis, PageMargin, PageSize
@@ -61,7 +62,7 @@ class CVLayoutAnalyzer:
     KMEANS_N_CLUSTERS = 2
     KMEANS_INIT = 10
     COLUMN_SEPARATION_THRESHOLD = 200
-    MIN_X_POSITIONS_FOR_CLUSTERING = 10
+    MIN_X_POSITIONS_FOR_CLUSTERING = 30
     
     # Page Margin Constants (as percentage of page height)
     HEADER_THRESHOLD_PERCENT = 0.05
@@ -254,17 +255,7 @@ class CVLayoutAnalyzer:
         all_text_content: List[str], 
         fonts_used: Set[str]
     ) -> PdfPageAnalysisResult:
-        """Analyze a single PDF page for layout features.
-        
-        Args:
-            page: PyMuPDF page object
-            all_font_sizes: List to accumulate font sizes across pages
-            all_text_content: List to accumulate text content for word count
-            fonts_used: Set to accumulate unique font names
-        
-        Returns:
-            Dictionary with page analysis results
-        """
+        """Analyze a single PDF page for layout features."""
         page_rect = page.rect
         page_width = page_rect.width
         page_height = page_rect.height
@@ -274,7 +265,9 @@ class CVLayoutAnalyzer:
         footer_threshold = page_height * CVLayoutAnalyzer.FOOTER_THRESHOLD_PERCENT
 
         have_images = bool(page.get_images())
-        have_tables = len(page.find_tables().tables) > 0
+        table_objects = page.find_tables()
+        have_tables = len(table_objects.tables) > 0
+        table_bboxes = [table.bbox for table in table_objects.tables] if have_tables else []
         have_graphics = len(page.get_drawings()) > 0
         information_in_header = False
         information_in_footer = False
@@ -284,12 +277,9 @@ class CVLayoutAnalyzer:
         # Extract fonts
         fonts = page.get_fonts()
         for font in fonts:
-            raw_font_name = font[3]  # font name is at index 3
-            # Remove PDF subset prefix like "BCDKEE+"
+            raw_font_name = font[3]
             clean_name = re.sub(r"^[A-Z]{6}\+", "", raw_font_name)
-            # Normalize common names
             clean_name = clean_name.replace("MT", "")
-            # Remove style suffixes
             clean_name = re.sub(
                 r"-(Bold|Italic|BoldItalic|Regular|Oblique)$",
                 "",
@@ -298,7 +288,7 @@ class CVLayoutAnalyzer:
             )
             fonts_used.add(clean_name)
 
-        # Check for columns (simple heuristic)
+        # Check for columns
         column_centers = CVLayoutAnalyzer._detect_pdf_columns(page)
         have_columns = column_centers is not None
 
@@ -306,35 +296,24 @@ class CVLayoutAnalyzer:
         raw_blocks = page.get_text("rawdict")["blocks"]
         text_blocks = [b for b in raw_blocks if b["type"] == 0]
         
-        # Sort text blocks by column first for multi-column layouts
-        if have_columns and column_centers:
-            # Multi-column layout: sort by column first, then by Y position within column
-            text_blocks = CVLayoutAnalyzer._sort_blocks_by_columns(
-                text_blocks, column_centers
-            )
-        else:
-            # Single column or no columns: sort by Y position (top to bottom), then X (left to right)
-            text_blocks = sorted(
-                text_blocks,
-                key=lambda b: (b["bbox"][1], b["bbox"][0])
-            )
+        # Filter out text blocks inside tables
+        non_table_blocks = CVLayoutAnalyzer._filter_blocks_in_tables(text_blocks, table_bboxes)
         
-        links = page.get_links()
-        page_lines = []
-
         # Collect font sizes
         all_font_sizes.extend(
             span["size"]
-            for block in text_blocks
+            for block in non_table_blocks
             for line in block.get("lines", [])
             for span in line.get("spans", [])
             if span.get("size", 0) > 0
         )
 
-        # Check for text in header/footer regions and collect text
-        for block in text_blocks:
+        # Create entries for text blocks with positioning info
+        text_entries = []
+        for block in non_table_blocks:
             block_top = block["bbox"][1]
             block_bottom = block["bbox"][3]
+            block_left = block["bbox"][0]
 
             if block_top < header_threshold:
                 information_in_header = True
@@ -342,38 +321,80 @@ class CVLayoutAnalyzer:
             if block_bottom > footer_threshold:
                 information_in_footer = True
 
+            block_lines = []
             for line in block.get("lines", []):
                 line_spans = []
-
                 for span in line.get("spans", []):
-                    # reconstruct text from characters
                     chars = span.get("chars", [])
                     text = "".join(ch.get("c", "") for ch in chars).strip()
-
                     if text:
-                        line_spans.append(text) 
+                        line_spans.append(text)
 
                 if line_spans:
                     line_text = " ".join(line_spans)
-
                     # Normalize bullets
                     if line_text.startswith(("•", "-", "▪", "●")):
                         line_text = f"- {line_text.lstrip('•-▪●').strip()}"
+                    block_lines.append(line_text)
 
-                    page_lines.append(line_text)
-                    all_text_content.append(line_text)
+            if block_lines:
+                text_entries.append({
+                    'y_position': block_top,
+                    'x_position': block_left,
+                    'content': block_lines,
+                    'is_table': False,
+                    'bbox': block["bbox"]
+                })
 
-                page_text = "\n".join(page_lines)
-                page_text = CVLayoutAnalyzer._attach_links_once(page, page_text)
+        # Create entries for tables with positioning info
+        table_entries = []
+        if have_tables:
+            for table in table_objects.tables:
+                table_bbox = table.bbox
+                table_y_position = table_bbox[1]  # Top Y
+                table_x_position = table_bbox[0]  # Left X
+                table_lines = CVLayoutAnalyzer._extract_table_content(table)
+                if table_lines:
+                    table_entries.append({
+                        'y_position': table_y_position,
+                        'x_position': table_x_position,
+                        'content': table_lines,
+                        'is_table': True,
+                        'bbox': table_bbox
+                    })
+
+        # Merge text and table entries
+        all_entries = text_entries + table_entries
+
+        # Sort entries based on column layout
+        if have_columns and column_centers:
+            # Multi-column: sort by column first, then Y within column
+            all_entries = CVLayoutAnalyzer._sort_entries_by_columns(
+                all_entries, column_centers
+            )
+        else:
+            # Single column: sort by Y position (top to bottom), then X (left to right)
+            all_entries = sorted(
+                all_entries,
+                key=lambda e: (e['y_position'], e['x_position'])
+            )
+
+        # Build final page text in correct order
+        page_lines = []
+        for entry in all_entries:
+            page_lines.extend(entry['content'])
+            all_text_content.extend(entry['content'])
+        
+        page_text = "\n".join(page_lines)
+        page_text = CVLayoutAnalyzer._attach_links_once(page, page_text)
 
         # Estimate page margins
-        if text_blocks:
-            left_margin = min(b["bbox"][0] for b in text_blocks)
-            top_margin = min(b["bbox"][1] for b in text_blocks)
-            right_margin = page_width - max(b["bbox"][2] for b in text_blocks)
-            bottom_margin = page_height - max(b["bbox"][3] for b in text_blocks)
+        if non_table_blocks:
+            left_margin = min(b["bbox"][0] for b in non_table_blocks)
+            top_margin = min(b["bbox"][1] for b in non_table_blocks)
+            right_margin = page_width - max(b["bbox"][2] for b in non_table_blocks)
+            bottom_margin = page_height - max(b["bbox"][3] for b in non_table_blocks)
 
-            # Convert from points to inches
             page_margin = {
                 "left": round(left_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2),
                 "top": round(top_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2),
@@ -395,68 +416,215 @@ class CVLayoutAnalyzer:
             "page_margin": page_margin,
             "page_text": page_text
         }
+    
+    @staticmethod
+    def _filter_blocks_in_tables(blocks: List[Dict], table_bboxes: List) -> List[Dict]:
+        """Filter out text blocks that are inside table boundaries.
+        
+        Only filters blocks whose Y-coordinates are within table Y-range.
+        Blocks that come before or after tables are kept.
+        
+        Args:
+            blocks: List of text blocks from page
+            table_bboxes: List of table bounding boxes (x0, y0, x1, y1)
+        
+        Returns:
+            List of blocks that are NOT inside tables
+        """
+        def is_inside_table(block_bbox: Tuple) -> bool:
+            """Check if a block's center Y is within any table's Y range AND X overlaps."""
+            block_x0, block_y0, block_x1, block_y1 = block_bbox
+            block_y_center = (block_y0 + block_y1) / 2
+            
+            for table_bbox in table_bboxes:
+                table_x0, table_y0, table_x1, table_y1 = table_bbox
+                # Block is inside table if:
+                # 1. Y center is between table's Y coordinates (block is vertically within table)
+                # 2. AND X coordinates overlap (block is horizontally within table)
+                if (table_y0 <= block_y_center <= table_y1 and
+                    block_x0 < table_x1 and block_x1 > table_x0):
+                    return True
+            return False
+        
+        return [b for b in blocks if not is_inside_table(b["bbox"])]
 
+    @staticmethod
+    def _extract_table_content(table) -> List[str]:
+        """Extract text from a single table with structure preservation."""
+        table_lines = []
+        
+        try:
+            table_data = table.extract()
+            if not table_data:
+                return table_lines
+            
+            table_lines.append("--- TABLE START ---")
+            
+            for row_idx, row in enumerate(table_data):
+                row_text = " | ".join(
+                    str(cell).strip() if cell else "" 
+                    for cell in row
+                )
+                
+                if row_text.strip():
+                    table_lines.append(row_text)
+                
+                if row_idx < len(table_data) - 1:
+                    table_lines.append("-" * 40)
+            
+            table_lines.append("--- TABLE END ---")
+            table_lines.append("")
+            
+        except Exception:
+            try:
+                text = table.get_text().strip()
+                if text:
+                    table_lines.append("--- TABLE START ---")
+                    table_lines.extend(text.split("\n"))
+                    table_lines.append("--- TABLE END ---")
+                    table_lines.append("")
+            except Exception:
+                pass
+        
+        return table_lines
+   
     @staticmethod
     def _detect_pdf_columns(page) -> Optional[List[float]]:
         """Detect if PDF page has multi-column layout and return column centers.
         
-        Uses simple heuristic: clustering of text x-positions to find column separation.
-        
-        Returns:
-            List of column center positions (sorted) if multi-column layout detected, None otherwise
-        """
-        blocks = page.get_text("dict")["blocks"]
-        x_positions = [
-            span["bbox"][0]
-            for block in blocks if block["type"] == 0
-            for line in block["lines"]
-            for span in line["spans"]
-        ]
-        
-        if len(x_positions) > CVLayoutAnalyzer.MIN_X_POSITIONS_FOR_CLUSTERING:
-            x_positions = np.array(x_positions).reshape(-1, 1)
-            kmeans = KMeans(n_clusters=CVLayoutAnalyzer.KMEANS_N_CLUSTERS, 
-                          n_init=CVLayoutAnalyzer.KMEANS_INIT).fit(x_positions)
-            centers = sorted(kmeans.cluster_centers_.flatten())
-            if abs(centers[0] - centers[1]) > CVLayoutAnalyzer.COLUMN_SEPARATION_THRESHOLD:
-                return centers
-        return None
-
-    @staticmethod
-    def _sort_blocks_by_columns(
-        blocks: List[Dict], 
-        column_centers: List[float]
-    ) -> List[Dict]:
-        """Sort text blocks by column first, then by Y position within each column.
-        
-        For multi-column layouts (like two-column CVs), this ensures the entire
-        left column is read before the right column, rather than reading row-by-row.
+        Uses clustering of text x-positions to identify column separation.
+        Excludes text within table regions to avoid false positives.
         
         Args:
-            blocks: List of text blocks from PDF
+            page: PyMuPDF page object
+        
+        Returns:
+            List of column center positions (sorted left to right) if multi-column 
+            layout detected, None otherwise
+        """
+        # Get table bounding boxes to exclude them from column detection
+        tables = page.find_tables()
+        table_bboxes = [table.bbox for table in tables.tables] if tables else []
+        
+        def is_in_table(x: float, y: float) -> bool:
+            """Check if a point is within any table boundary."""
+            for bbox in table_bboxes:
+                # bbox format: (x0, y0, x1, y1)
+                if bbox[0] <= x <= bbox[2] and bbox[1] <= y <= bbox[3]:
+                    return True
+            return False
+        
+        # Extract text blocks and collect x-positions
+        blocks = page.get_text("dict")["blocks"]
+        x_positions = []
+        page_width = page.rect.width
+        page_height = page.rect.height
+        
+        # Define margins to exclude header/footer and side margins
+        margin_threshold = 0.1  # 10% margin on each side
+        left_margin = page_width * margin_threshold
+        right_margin = page_width * (1 - margin_threshold)
+        top_margin = page_height * 0.1
+        bottom_margin = page_height * 0.9
+        
+        for block in blocks:
+            if block["type"] != 0:  # Skip non-text blocks
+                continue
+            
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    span_x = span["bbox"][0]  # Left x-position of span
+                    span_y = span["bbox"][1]  # Top y-position of span
+                    span_text = span.get("text", "").strip()
+                    
+                    # Skip if:
+                    # - In table
+                    # - In margin areas
+                    # - Empty text
+                    # - Very short text (likely artifacts)
+                    if (not is_in_table(span_x, span_y) and 
+                        left_margin <= span_x <= right_margin and
+                        top_margin <= span_y <= bottom_margin and
+                        len(span_text) > 2):  # Filter out single chars/symbols
+                        x_positions.append(span_x)
+        
+        # Need sufficient data points for reliable clustering
+        if len(x_positions) < CVLayoutAnalyzer.MIN_X_POSITIONS_FOR_CLUSTERING:
+            return None
+        
+        # Perform K-means clustering
+        x_positions_array = np.array(x_positions).reshape(-1, 1)
+        
+        try:
+            kmeans = KMeans(
+                n_clusters=CVLayoutAnalyzer.KMEANS_N_CLUSTERS, 
+                n_init=CVLayoutAnalyzer.KMEANS_INIT,
+                random_state=42  # For reproducibility
+            ).fit(x_positions_array)
+            
+            centers = sorted(kmeans.cluster_centers_.flatten())
+            
+            # Validate column separation
+            if len(centers) >= 2:
+                # Check if clusters are well-separated
+                separation = abs(centers[1] - centers[0])
+                
+                # Column separation should be significant (at least 20% of page width)
+                min_separation = page_width * 0.2
+                
+                if separation > max(CVLayoutAnalyzer.COLUMN_SEPARATION_THRESHOLD, min_separation):
+                    # Additional validation: check cluster sizes
+                    labels = kmeans.labels_
+                    unique, counts = np.unique(labels, return_counts=True)
+                    
+                    # Both columns should have substantial content
+                    # (at least 20% of total spans each)
+                    min_cluster_size = len(x_positions) * 0.2
+                    
+                    if all(count >= min_cluster_size for count in counts):
+                        return centers
+        
+        except Exception as e:
+            # If clustering fails, return None (single column)
+            return None
+        
+        return None
+    
+    @staticmethod
+    def _sort_entries_by_columns(
+        entries: List[Dict], 
+        column_centers: List[float]
+    ) -> List[Dict]:
+        """Sort entries (text blocks and tables) by column first, then by Y position.
+        
+        For multi-column layouts, this ensures the entire left column is read 
+        before the right column.
+        
+        Args:
+            entries: List of entries (text blocks and tables) with position info
             column_centers: Sorted list of column center x-positions
         
         Returns:
-            Blocks sorted: column index (left to right), then Y position (top to bottom)
+            Entries sorted: column index (left to right), then Y position (top to bottom)
         """
-        def get_column_index(block_x: float) -> int:
-            """Determine which column a block belongs to based on x position."""
+        def get_column_index(x_position: float) -> int:
+            """Determine which column an entry belongs to based on x position."""
             if len(column_centers) < 2:
                 return 0
             
-            # Find the column center closest to this block's x position
+            # Find the column center closest to this entry's x position
             midpoint = (column_centers[0] + column_centers[1]) / 2
-            if block_x < midpoint:
+            if x_position < midpoint:
                 return 0  # Left column
             else:
                 return 1  # Right column
         
         # Sort by: column index first, then Y position within column
         return sorted(
-            blocks,
-            key=lambda b: (
-                get_column_index(b["bbox"][0]),  # Column index (0 = left, 1 = right)
-                b["bbox"][1]                      # Y position (top to bottom)
+            entries,
+            key=lambda e: (
+                get_column_index(e['x_position']),  # Column index (0 = left, 1 = right)
+                e['y_position']                      # Y position (top to bottom)
             )
         )
 
