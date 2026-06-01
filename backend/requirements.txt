@@ -37,7 +37,7 @@ azure-core
 pdfplumber>=0.10.0
 pdf2image>=1.16.0
 pytesseract>=0.3.10
-pymupdf
+pymupdf4llm>=1.27.1
 python-docx
 Pillow
 
