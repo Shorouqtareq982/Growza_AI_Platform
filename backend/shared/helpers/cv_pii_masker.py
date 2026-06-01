@@ -502,6 +502,23 @@ def unmask_text(text, mask_map):
 # =========================================================
 # Pattern-Based Masking (Fallback)
 # =========================================================
+
+_STREET_TYPES = (
+    r"Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|"
+    r"Lane|Ln|Drive|Dr|Court|Ct|Place|Pl|"
+    r"Way|Terrace|Ter|Circle|Cir|Trail|Trl"
+)
+
+LOCATION_PATTERN = (
+    r'\b'
+    r'(\d{1,5})'                        # house number
+    r'\s+'
+    r'([A-Za-z0-9]+(?:\s[A-Za-z0-9]+){0,4})'  # street name: 1–5 words, no unbounded repeat
+    r'\s+'
+    r'(?:' + _STREET_TYPES + r')\b'     # required street type
+    r'(?:\s+(?:Apt|Suite|Ste|Unit|#)\s*[A-Za-z0-9-]+)?'  # optional unit
+)
+
 PATTERN_CONFIGS = {
     "EMAIL_ADDRESS": {
         "pattern": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',
@@ -527,8 +544,8 @@ PATTERN_CONFIGS = {
         "priority": 4
     },
     "LOCATION": {
-      "pattern": r'\d{1,5}\s[\w\s]{1,50}(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr)[\w\s,\.]*\d{5}(?:-\d{4})?',
-      "priority": 5
+        "pattern": LOCATION_PATTERN,
+        "priority": 5
     }
 }
 

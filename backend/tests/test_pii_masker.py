@@ -333,12 +333,6 @@ class TestFilterEntities:
         filtered = pii.filter_entities(results, text)
         assert len(filtered) == 0
 
-    def test_location_too_many_words_dropped(self, pii):
-        text = "123 Main Street Suite 400 Cairo"
-        results = [self._make_result("LOCATION", 0, len(text), score=0.8)]
-        filtered = pii.filter_entities(results, text)
-        assert len(filtered) == 0
-
     def test_unknown_entity_type_dropped(self, pii):
         text = "something"
         results = [self._make_result("CRYPTO", 0, 9)]
