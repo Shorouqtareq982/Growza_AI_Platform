@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = ""
     GEMINI_EMBEDDING_MODEL: str = ""
     GEMINI_REQUEST_DELAY_SECONDS: float = 2.0
+    
+    # Job Matching - Multiple Gemini Keys
+    GEMINI_API_KEY_1: str = ""
+    GEMINI_API_KEY_2: str = ""
+    GEMINI_API_KEY_3: str = ""
+    
     ASSEMBLYAI_API_KEY: str = Field(default="", validation_alias="AssemblyAI_API_KEY")
     ELEVENLABS_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
@@ -69,19 +75,28 @@ class Settings(BaseSettings):
     GROQ_MODEL: Optional[str] = None
     GROQ_REQUEST_DELAY_SECONDS: float = 2.0
     WHISPER_MODEL_CACHE_DIR: str = ""
-    #GitHub
+    
+    # GitHub
     GITHUB_TOKEN: Optional[str] = None
     PORTFOLIO_GITHUB_TOKEN: Optional[str] = None
     PORTFOLIO_REPO_NAME: Optional[str] = None
+    
     # Resource APIs
     YOUTUBE_API_KEY: Optional[str] = None
     SERPAPI_API_KEY: Optional[str] = None
     TAVILY_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
     OPENROUTER_MODEL: Optional[str] = None
+    
     # External APIs
     JOB_API_BASE_URL: str = ""
     JOB_API_KEY: str = ""
+    
+    # Job Matching - Multiple JSearch Keys
+    JSEARCH_API_KEY_1: str = ""
+    JSEARCH_API_KEY_2: str = ""
+    JSEARCH_API_KEY_3: str = ""
+    JSEARCH_API_KEY_4: str = ""
 
     # Job Crawler Settings
     WUZZUF_LIMIT: int = 5

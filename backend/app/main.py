@@ -108,12 +108,16 @@ def create_application() -> FastAPI:
     from features.career_builder.routers.llm_health_router import router as llm_health_router
     from features.mock_interview.routers.mock_interview_router import router as mock_interview_router
     from features.market_insights.routers.market_router import router as market_router
+    from features.job_matching.routers.job_matching_router import router as job_matching_router
+    from features.job_matching.routers.saved_jobs_router import router as saved_jobs_router
 
     app.include_router(api_router, prefix=settings.API_V1_PREFIX)
     app.include_router(level_router, prefix=settings.API_V1_PREFIX)
     app.include_router(llm_health_router, prefix=settings.API_V1_PREFIX)
     app.include_router(mock_interview_router, prefix=settings.API_V1_PREFIX)
     app.include_router(market_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(job_matching_router, prefix=settings.API_V1_PREFIX)
+    app.include_router(saved_jobs_router, prefix=settings.API_V1_PREFIX)
 
     return app
 
