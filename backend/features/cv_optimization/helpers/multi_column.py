@@ -61,6 +61,8 @@ Copyright 2024 Artifex Software, Inc.
 License GNU Affero GPL 3.0
 """
 
+import re
+
 import pymupdf
 import pymupdf4llm
 
@@ -528,6 +530,41 @@ def column_boxes(
     finally:
         pymupdf.TOOLS.unset_quad_corrections(False)
 
+import re
+
+DATE_LINE = re.compile(
+    r"^\s*(\d{1,2}/\d{4}(?:\s*[–-]\s*(?:\d{1,2}/\d{4}|present))?)\s*$",
+    re.I,
+)
+
+LOCATION_LINE = re.compile(
+    r"^\s*([A-Za-z]+(?:\s+[A-Za-z]+)*,\s*[A-Za-z]+(?:\s+[A-Za-z]+)*)\s*$",
+    re.I,
+)
+
+def is_metadata_line(line):
+    return (
+        DATE_LINE.match(line)
+        or LOCATION_LINE.match(line)
+        or len(line.strip().split()) <= 1
+        or "@" in line
+        or "linkedin" in line.lower()
+    )
+
+def is_metadata_column(text):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    if not lines:
+        return False
+
+    metadata_lines = sum(
+        1 for line in lines
+        if is_metadata_line(line)
+    )
+
+    return metadata_lines / len(lines) > 0.8
+
+
 def have_columns(
     page,
     *,
@@ -536,47 +573,84 @@ def have_columns(
     no_image_text=True,
     min_columns=2,
 ):
-    """
-    Detect whether a PDF page uses a multi-column layout.
+    """Determine if a page has multiple text columns.
 
     Args:
-        page: PyMuPDF page object
-        footer_margin: Ignore footer area
-        header_margin: Ignore header area
-        no_image_text: Ignore text over images
-        min_columns: Minimum number of detected columns required
+        page: the PDF page to analyze
+        footer_margin: ignore text if distance from bottom is less
+        header_margin: ignore text if distance from top is less
+        no_image_text: ignore text inside image bboxes
+        min_columns: minimum number of columns to consider as multi-column
 
     Returns:
-        bool: True if page appears to have multiple columns
+        True if the page contains at least min_columns columns, else False.
     """
-
-    bboxes = column_boxes(
+    boxes = column_boxes(
         page,
         footer_margin=footer_margin,
         header_margin=header_margin,
         no_image_text=no_image_text,
     )
 
-    if len(bboxes) < min_columns:
+    if len(boxes) < min_columns:
         return False
 
-    # Group blocks by horizontal position
-    x_positions = []
+    # Collect unique horizontal bands by checking if boxes are
+    # side-by-side (i.e. they overlap vertically but not horizontally).
+    # We count how many boxes share a vertical overlap at any point —
+    # if 2+ boxes sit beside each other, we have multiple columns.
+    intervals = []
+    column_height = 0
+    MIN_COLUMN_WIDTH = page.rect.width * 0.15
+    block_texts = [
+        page.get_text(clip=b, sort=True)
+        for b in boxes
+    ]
+    for i in range(len(boxes)):
+        for j in range(i + 1, len(boxes)):
+            b1 = boxes[i]
+            b2 = boxes[j]
 
-    for rect in bboxes:
-        center_x = (rect.x0 + rect.x1) / 2
-        x_positions.append(center_x)
+            width1 = b1.x1 - b1.x0
+            width2 = b2.x1 - b2.x0
 
-    x_positions.sort()
+            if width1 < MIN_COLUMN_WIDTH or width2 < MIN_COLUMN_WIDTH:
+                continue
 
-    # Detect separated vertical groups (columns)
-    columns = [[x_positions[0]]]
+            block1_text = block_texts[i]
+            block2_text = block_texts[j]
 
-    for x in x_positions[1:]:
-        # If far enough from previous group => new column
-        if abs(x - columns[-1][-1]) > page.rect.width * 0.2:
-            columns.append([x])
+            if is_metadata_column(block1_text) or is_metadata_column(block2_text):
+                continue
+
+            # Check for horizontal separation (side-by-side, not stacked)
+            horizontally_separate = b1.x1 <= b2.x0 or b2.x1 <= b1.x0
+
+            # Check for vertical overlap (they share some y-range)
+            vertically_overlapping = b1.y0 < b2.y1 and b2.y0 < b1.y1
+
+            if horizontally_separate and vertically_overlapping:
+                intervals.append(
+                    (
+                        max(b1.y0, b2.y0),
+                        min(b1.y1, b2.y1)
+                    )
+                )
+
+    intervals.sort()
+
+    merged = []
+
+    for start, end in intervals:
+        if not merged or start > merged[-1][1]:
+            merged.append([start, end])
         else:
-            columns[-1].append(x)
+            merged[-1][1] = max(merged[-1][1], end)
 
-    return len(columns) >= min_columns
+    column_height = sum(
+        end - start
+        for start, end in merged
+    )
+                
+
+    return  column_height > page.rect.height * 0.25

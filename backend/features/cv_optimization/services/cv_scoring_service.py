@@ -201,7 +201,7 @@ class CVScoringService:
             })
 
         # 4. Valid Date Formats (1)
-        valid_date_format = self.layout_analysis.get("valid_date_format")
+        valid_date_format = validate_cv_dates(self.cv_text).get("is_valid")
         date_format_ok = valid_date_format is None or valid_date_format
         passed_checks += int(date_format_ok)
         if not date_format_ok:
@@ -212,12 +212,12 @@ class CVScoringService:
 
         # 5. File Quality (5)
         file_size_kb = self.layout_analysis.get("file_size_kb")
-        file_size_ok = file_size_kb is None or file_size_kb <= 5000
+        file_size_ok = file_size_kb is None or file_size_kb <= 1000
         passed_checks += int(file_size_ok)
         if not file_size_ok:
             self.ats_issues.append({
                 "Check_Name": "File Size",
-                "Result": {"description": "CV file size is on the heavy side. Compressing it to 5 MB or less will help it upload and process more smoothly."}
+                "Result": {"description": "CV file size is on the heavy side. Compressing it to 1 MB or less will help it upload and process more smoothly."}
             })
 
         file_type = self.layout_analysis.get("file_type")
@@ -229,8 +229,8 @@ class CVScoringService:
                 "Result": {"description": "This file format may not be fully supported by ATS systems. PDF or DOCX is the safest choice for reliable parsing."}
             })
 
-        valid_cv_filename = self.layout_analysis.get("valid_cv_filename")
-        filename_relevant_ok = valid_cv_filename is None or valid_cv_filename
+        cv_filename = self.layout_analysis.get("original_filename")
+        filename_relevant_ok = cv_filename and ("cv" in cv_filename.lower() or "resume" in cv_filename.lower())
         passed_checks += int(filename_relevant_ok)
         if not filename_relevant_ok:
             self.ats_issues.append({
@@ -268,7 +268,7 @@ class CVScoringService:
 
         Essential sections (4): summary, skills, education, experience
         Contact info (4): email, phone, location, name/title
-        Content quality (5): structure, grammar (≤2 typos), action verbs (no pronouns), clarity, and ≥5 quantifiable achievements
+        Content quality (5): structure, action verbs, no pronouns, clarity, and ≥5 quantifiable achievements
 
         Quantifiable results include: money, people, operations, and achievements (e.g., revenue, team size, efficiency gains).
         """
@@ -426,11 +426,13 @@ class CVScoringService:
                 margin.get("left"),
                 margin.get("top"),
                 margin.get("right"),
-                margin.get("bottom"),
             ]
+            bottom_margin = margin.get("bottom")
             if any(side is None for side in sides):
                 continue
             if not all(0.5 <= float(side) <= 1.0 for side in sides):
+                return False
+            if bottom_margin is not None and float(bottom_margin) < 0.5:
                 return False
         return True
     
@@ -482,8 +484,193 @@ class CVScoringService:
             return False
         return re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", str(email).strip()) is not None
 
-    
     def _is_valid_phone(self, phone):
         digits = re.sub(r"\D", "", str(phone or ""))
         return len(digits) >= 7
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+FULL_MONTHS = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+ABBR_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+SEASONS = ("Spring", "Summer", "Fall", "Winter")
+
+_FM  = "|".join(FULL_MONTHS)           # full month names
+_AM  = "|".join(ABBR_MONTHS)           # 3-letter abbreviations
+_S   = "|".join(SEASONS)               # season names
+_SEP = r"\s*[–-]\s*"                   # en-dash or hyphen, optional spaces
+
+# ---------- atomic date atoms ----------
+# Year-only  e.g. 2019 or Present/Current
+_YEAR      = r"(?:19|20)\d{2}"
+_YEAR_FLEX = rf"(?:{_YEAR}|[Pp]resent|[Cc]urrent)"
+
+# MM/YYYY or MM-YYYY
+_MMYYYY    = r"(?:0?[1-9]|1[0-2])[/\-](?:19|20)\d{2}"
+# MM/YY (short year)
+_MMYY      = r"(?:0?[1-9]|1[0-2])[/\-]\d{2}"
+# Full month + year
+_FMYYYY    = rf"(?:{_FM})\s+(?:19|20)\d{{2}}"
+# Abbreviated month + year
+_AMYYYY    = rf"(?:{_AM})\s+(?:19|20)\d{{2}}"
+# Season + year
+_SYYYY     = rf"(?:{_S})\s+(?:19|20)\d{{2}}"
+
+# "Expected …" prefix variants
+_EXP_ATOM  = rf"(?:{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR})"
+_EXPECTED  = rf"Expected\s+{_EXP_ATOM}"
+
+# Any single standalone date (no range)
+_SINGLE    = rf"(?:{_EXPECTED}|{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR_FLEX})"
+
+# A range: <date> – <date or Present>
+_RANGE     = rf"(?:{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR}){_SEP}(?:{_SYYYY}|{_FMYYYY}|{_AMYYYY}|{_MMYYYY}|{_MMYY}|{_YEAR_FLEX})"
+
+DATE_PATTERN = re.compile(
+    rf"\b(?:{_RANGE}|{_SINGLE})\b",
+    re.IGNORECASE,
+)
+
+# ---------- bad-pattern detectors ----------
+# Day included: DD/MM/YYYY, MM/DD/YYYY, etc.
+BAD_WITH_DAY = re.compile(
+    r"\b(?:\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}|\d{4}[/\-]\d{1,2}[/\-]\d{1,2})\b"
+)
+# Month only (no year near it)
+BAD_MONTH_ONLY = re.compile(
+    rf"\b(?:{_FM}|{_AM})\b(?!\s+(?:19|20)\d{{2}})",
+    re.IGNORECASE,
+)
+# Bad separator: "to", "until", "through" between years
+BAD_WORD_SEP = re.compile(
+    rf"(?:{_YEAR}|{_AM}|{_FM}|{_S})\s+\d{{4}}\s+(?:to|until|through)\s+",
+    re.IGNORECASE,
+)
+# No space around dash/en-dash in a range  e.g. "2016-2019"
+BAD_NO_SPACE_SEP = re.compile(r"(?<!\s)[–-](?!\s)")
+# Abbreviated month with trailing period  e.g. "Sept." or "Jan."
+BAD_ABBR_PERIOD = re.compile(
+    rf"\b(?:{'|'.join(ABBR_MONTHS)})\.",
+    re.IGNORECASE,
+)
+
+# ---------------------------------------------------------------------------
+# Format-family classifier
+# ---------------------------------------------------------------------------
+def _classify(date_str: str) -> str:
+    """Return a format-family tag for a matched date string."""
+    s = date_str.strip()
+    if re.match(r"^Expected\b", s, re.IGNORECASE):
+        return "expected"
+    if re.search(rf"\b(?:{_S})\b", s, re.IGNORECASE):
+        return "season_year"
+    if re.search(rf"\b(?:{_FM})\b", s):
+        return "full_month_year"
+    if re.search(rf"\b(?:{_AM})\b", s):
+        return "abbr_month_year"
+    if re.search(r"\d{1,2}[/\-](?:19|20)\d{2}", s):
+        return "mm_yyyy"
+    if re.search(r"\d{1,2}[/\-]\d{2}\b", s):
+        return "mm_yy"
+    return "year_only"
+
+def validate_cv_dates(cv_text: str) -> dict[str, Any]:
+    """
+    Validate all date expressions found in *cv_text* against the resume
+    date-format rules from resumeworded.com.
+
+    Parameters
+    ----------
+    cv_text : str
+        Raw text extracted from a CV / resume.
+
+    Returns
+    -------
+    dict[str, Any]
+        Contains validity flag, found dates, format families, errors, warnings.
+    """
+    errors:   list[str] = []
+    warnings: list[str] = []
+
+    # 1. Detect outright bad patterns ----------------------------------------
+    for m in BAD_WITH_DAY.finditer(cv_text):
+        errors.append(
+            f"Exact day included (not allowed on resumes): '{m.group()}'"
+        )
+
+    for m in BAD_WORD_SEP.finditer(cv_text):
+        errors.append(
+            f"Word separator ('to'/'until'/'through') used instead of dash: '{m.group().strip()}'"
+        )
+
+    for m in BAD_ABBR_PERIOD.finditer(cv_text):
+        errors.append(
+            f"Month abbreviation should not have a trailing period: '{m.group()}'"
+        )
+
+    # 2. Check for bad no-space separators (heuristic: year-dash-year) --------
+    no_space = re.findall(r"(?:19|20)\d{2}[–-](?:19|20)\d{2}", cv_text)
+    for hit in no_space:
+        errors.append(
+            f"Date range missing spaces around separator: '{hit}' "
+            f"(should be e.g. '2016 – 2019')"
+        )
+
+    # 3. Extract valid date matches -------------------------------------------
+    dates_found: list[str] = []
+    families:    list[str] = []
+
+    for m in DATE_PATTERN.finditer(cv_text):
+        token = m.group().strip()
+        # Skip tokens that are only a bare 2-digit number (false positives)
+        if re.fullmatch(r"\d{1,2}", token):
+            continue
+        dates_found.append(token)
+        families.append(_classify(token))
+
+    # 4. Consistency check ----------------------------------------------------
+    if dates_found:
+        # Ignore "expected" and "year_only" when checking cross-section consistency
+        # (the article explicitly allows year-only for old jobs alongside month+year)
+        core_families = [f for f in families if f not in ("expected",)]
+        unique_core = set(core_families)
+
+        # Incompatible mix: e.g. full_month_year AND abbr_month_year in same doc
+        incompatible_pairs = [
+            {"full_month_year", "abbr_month_year"},
+            {"mm_yyyy", "mm_yy"},
+            {"season_year", "mm_yyyy"},
+            {"season_year", "mm_yy"},
+            {"season_year", "full_month_year"},
+            {"season_year", "abbr_month_year"},
+        ]
+        for pair in incompatible_pairs:
+            if pair.issubset(unique_core):
+                errors.append(
+                    f"Inconsistent date formats detected: "
+                    f"{sorted(pair)} — pick one and use it throughout."
+                )
+
+        # Warn (not error) about mixing year-only with month+year
+        # (article says it's acceptable for older positions)
+        if "year_only" in unique_core and len(unique_core) > 1:
+            warnings.append(
+                "Year-only dates are mixed with month+year dates. "
+                "This is acceptable for older/distant positions, but ensure "
+                "it's not being used to hide short tenures."
+            )
+
+    is_valid = len(errors) == 0
+    return {
+        "is_valid": is_valid,
+        "dates_found": dates_found,
+        "format_families": families,
+        "errors": errors,
+        "warnings": warnings
+    }
+    

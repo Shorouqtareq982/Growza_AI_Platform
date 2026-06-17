@@ -12,7 +12,7 @@ from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
 from docx.text.run import Run
 from sklearn.cluster import KMeans
-from ..helpers.multi_column import column_boxes
+from ..helpers.multi_column import column_boxes, have_columns as have_columns_func
 
 from shared.helpers.file_validation import FileValidator
 from ..schemas.layout_analysis_schema import CVLayoutAnalysis, PageMargin, PageSize
@@ -284,13 +284,25 @@ class CVLayoutAnalyzer:
         for font in fonts:
             raw_font_name = font[3]
             clean_name = re.sub(r"^[A-Z]{6}\+", "", raw_font_name)
-            clean_name = clean_name.replace("MT", "")
+            # Remove common PDF postfixes
+            clean_name = re.sub(r"(PSMT|PS|MT)$", "", clean_name, flags=re.I)
+            # Remove style descriptors
             clean_name = re.sub(
-                r"-(Bold|Italic|BoldItalic|Regular|Oblique)$",
+                r"[-_,]?(?:"
+                r"Bold|Italic|Regular|Oblique|Roman|Medium|"
+                r"Light|SemiBold|DemiBold|ExtraBold|Black|"
+                r"Thin|Condensed|Narrow|Book|Heavy|"
+                r"BoldItalic|LightItalic|MediumItalic"
+                r")$",
                 "",
                 clean_name,
-                flags=re.IGNORECASE
+                flags=re.I,
             )
+            # Replace separators with spaces
+            clean_name = re.sub(r"[-_,]+", " ", clean_name)
+            # Collapse multiple spaces
+            clean_name = re.sub(r"\s+", " ", clean_name)
+            
             fonts_used.add(clean_name)
 
         # ============================================================
@@ -306,12 +318,12 @@ class CVLayoutAnalyzer:
                 avoid=table_bboxes  # Avoid extracting text from table areas
             )
             # If we got multiple bboxes, we have columns
-            have_columns = len(text_bboxes) > 1 and CVLayoutAnalyzer._has_column_layout(text_bboxes, page_width)
+            # have_columns = len(text_bboxes) > 1 and CVLayoutAnalyzer._has_column_layout(text_bboxes, page_width)
         except Exception as e:
             # Fallback to basic extraction if column_boxes fails
             print(f"Warning: column_boxes failed: {e}")
             text_bboxes = []
-            have_columns = False
+            # have_columns = False
 
         # Extract text from the ordered bounding boxes
         page_lines = []
@@ -406,25 +418,31 @@ class CVLayoutAnalyzer:
                 for span in line.get("spans", []):
                     if span.get("size", 0) > 0:
                         all_font_sizes.append(span["size"])
- 
+
         # Build final page text
         page_text = "\n".join(page_lines)
         page_text = CVLayoutAnalyzer._attach_links_once(page, page_text)
- 
+
         # Estimate page margins from text blocks
         if text_blocks:
+            # text_blocks = [
+            #     b for b in text_blocks
+            #     if (b["bbox"][2] - b["bbox"][0]) > 50
+            #     and (b["bbox"][3] - b["bbox"][1]) > 10
+            # ]
             left_margin = min(b["bbox"][0] for b in text_blocks)
             top_margin = min(b["bbox"][1] for b in text_blocks)
             right_margin = page_width - max(b["bbox"][2] for b in text_blocks)
             bottom_margin = page_height - max(b["bbox"][3] for b in text_blocks)
- 
+
             page_margin = {
-                "left": round(left_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2),
-                "top": round(top_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2),
-                "right": round(right_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2),
-                "bottom": round(bottom_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2),
+                "left": max(0, round(left_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2)),
+                "top": max(0, round(top_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2)),
+                "right": max(0, round(right_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2)),
+                "bottom": max(0, round(bottom_margin / CVLayoutAnalyzer.POINTS_PER_INCH, 2)),
             }
- 
+
+        have_columns = have_columns_func(page)
         return {
             "have_images": have_images,
             "have_tables": have_tables,
