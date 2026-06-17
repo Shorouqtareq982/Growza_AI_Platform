@@ -65,7 +65,7 @@ opensmile
 soundfile
 tqdm
 decord
-gensim
+gensim>=4.3.3
 matplotlib
 seaborn
 #install FFMPEG separately for decord to work
