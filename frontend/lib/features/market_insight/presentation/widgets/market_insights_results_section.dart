@@ -112,7 +112,7 @@ class MarketInsightsResultsSection extends StatelessWidget {
                       animationSeed: animationSeed,
                     )
                   : const _UnavailableCard(
-                      title: 'Top 5 Hiring Governorates',
+                      title: 'Top Hiring Governorates',
                       message:
                           'Governorate distribution is not returned by the current market endpoints yet.',
                     ),
@@ -932,7 +932,7 @@ class _GovernoratesCard extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            'Top 5 Hiring Governorates',
+            'Top Hiring Governorates',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: isDark ? AppColors.grey100 : AppColors.blue900,

@@ -9,7 +9,7 @@ import webbrowser
 from threading import Timer
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from features.job_matching.routers.saved_jobs_router import router as saved_jobs_router
 # ------------------------------------------------------------
 # 1. Add backend folder to Python path (so imports work)
 # ------------------------------------------------------------
