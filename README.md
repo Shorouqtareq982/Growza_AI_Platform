@@ -160,7 +160,7 @@ Additionally, I contributed to designing the recommendation strategy for the **H
 
 ## 🌐 AI Portfolio Builder
 
-![Portfolio Builder](docs/images/portfolio_builder.png)
+![Portfolio Builder](docs/images/portfolio_builder.jpeg)
 
 ---
 
