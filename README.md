@@ -1,43 +1,55 @@
 # 🚀 Growza – AI-Powered Career Development Platform
 
-Growza is an AI-powered career development platform that helps users bridge the gap between their current skills and their desired career path through personalized recommendations, intelligent analysis, and AI-driven learning.
+Growza is an AI-powered career development platform designed to bridge the gap between users' current skill sets and their target career paths through personalized recommendations, intelligent analysis, and AI-driven learning.
 
-The platform combines multiple AI services into one ecosystem, providing users with personalized career guidance, CV optimization, job matching, interview preparation, and portfolio building.
+The platform combines multiple AI-powered services into one ecosystem, helping users optimize their CVs, discover relevant jobs, prepare for interviews, build professional portfolios, and follow personalized learning roadmaps.
+
+> ## 📌 Academic Project
+>
+> This repository contains the backend implementation of **Growza**, our Graduation Project developed at the **Faculty of Computers and Data Science, Alexandria University**.
+>
+> Sensitive information such as API keys, environment variables, and credentials has been removed for security purposes.
 
 ---
 
-## ✨ Features
+# ✨ Features
 
-### 🤖 AI Career Builder
-- Personalized learning roadmaps
+## 🤖 AI Career Builder
+
+- Personalized career roadmaps
 - Skill gap analysis
 - AI-generated weekly learning plans
 - Learning timeline estimation
 - Roadmap regeneration based on user feedback
 - Progress tracking
 
-### 📄 CV Analyzer
+## 📄 CV Analyzer
+
 - CV parsing
 - Technical skill extraction
 - ATS optimization
-- Proficiency estimation
+- Skill proficiency estimation
 
-### 💼 Hybrid Job Matching
+## 💼 Hybrid Job Matching
+
 - Semantic skill matching
 - Rule-based recommendation engine
 - Personalized job recommendations
 
-### 🎤 AI Mock Interview
+## 🎤 AI Mock Interview
+
 - Technical interview simulation
 - Behavioral interview simulation
-- AI-generated feedback
+- AI-generated interview feedback
 
-### 📊 Market Insights
+## 📊 Market Insights
+
 - Salary analytics
 - Labor market trends
 - Career demand analysis
 
-### 🌐 Portfolio Builder
+## 🌐 AI Portfolio Builder
+
 - No-code portfolio creation
 - Professional portfolio publishing
 
@@ -45,7 +57,7 @@ The platform combines multiple AI services into one ecosystem, providing users w
 
 # 🏗️ Tech Stack
 
-## Backend
+### Backend
 
 - Python
 - FastAPI
@@ -55,7 +67,7 @@ The platform combines multiple AI services into one ecosystem, providing users w
 - Redis
 - Celery
 
-## Artificial Intelligence
+### Artificial Intelligence
 
 - Google Gemini
 - Groq (Llama 3.3)
@@ -64,20 +76,20 @@ The platform combines multiple AI services into one ecosystem, providing users w
 - Embedding Models
 - AI Recommendation System
 
-## Cloud & Storage
+### Cloud & Storage
 
 - Azure Blob Storage
 - Cloudinary
 
-## Frontend
+### Frontend
 
 - Flutter
 
 ---
 
-# ⚙️ Architecture
+# ⚙️ System Architecture
 
-```
+```text
 Flutter App
       │
       ▼
@@ -102,65 +114,59 @@ Flutter App
 
 # 👩‍💻 My Contribution
 
-As the Backend Developer for the **Career Builder** module, I designed and implemented:
+As the Backend Developer for the **Career Builder** module, I was responsible for designing and implementing:
 
 - CV analysis pipeline
-- Skill extraction
+- Technical skill extraction
 - Semantic skill matching
 - Skill gap analysis
 - Learning timeline estimation
 - AI-powered roadmap generation
 - Personalized recommendation logic
-- Feedback-based roadmap regeneration
-- Progress persistence
-- Backend APIs
+- Feedback-driven roadmap regeneration
+- Progress persistence and tracking
+- Backend REST APIs
 - Database design and integration
 
-I also contributed to designing the Hybrid Job Matching recommendation strategy.
+Additionally, I contributed to designing the recommendation strategy for the **Hybrid Job Matching** module.
 
 ---
 
-# 🚀 Getting Started
+# 📸 Project Preview
 
-## Clone the repository
+## 🏠 Home
 
-```bash
-git clone https://github.com/Shorouqtareq982/Advisor_Career_App.git
-```
+![Home](docs/images/home.png)
 
-## Install dependencies
+## 🤖 Career Builder
 
-```bash
-pip install -r requirements.txt
-```
+![Career Builder](docs/images/career_builder.png)
 
-## Create .env
+## 📄 CV Analyzer
 
-Copy:
+![CV Analyzer](docs/images/cv_analyzer.png)
 
-```
-.env.example
-```
+## 💼 Job Matching
 
-to
+![Job Matching](docs/images/job_matching.png)
 
-```
-.env
-```
+## 🎤 AI Mock Interview
 
-and fill in your API keys.
+![Mock Interview](docs/images/mock_interview.png)
 
-## Run the project
+## 📊 Market Insights
 
-```bash
-uvicorn app.main:app --reload
-```
+![Market Insights](docs/images/market_insights.png)
+
+## 🌐 AI Portfolio Builder
+
+![Portfolio Builder](docs/images/portfolio_builder.png)
 
 ---
 
 # 📂 Project Structure
 
-```
+```text
 backend/
 │
 ├── app/
@@ -176,6 +182,7 @@ backend/
 frontend/
 
 docs/
+└── images/
 
 README.md
 ```
@@ -184,13 +191,35 @@ README.md
 
 # 👥 Team
 
+**Growza Team**
+
+- Shorouq Tareq
+- Ola Ragab
+- Ranim Moustafa
+- Shahd Hossam
+- Mariam Mansour
+- Nourhan Essam
+- Radwa Mohamed
+- Asmaa Samir
+- Nada Harbi
+
+### Supervisor
+
+**Prof. Dr. Mervat Mikhail**
+
 Faculty of Computers and Data Science  
 Alexandria University
 
-Graduation Project 2026
+Graduation Project – 2026
 
 ---
 
-# 📜 License
+# 📄 Academic Notice
 
-This repository is intended for educational purposes as part of the Growza Graduation Project.
+This repository is shared for **educational and portfolio purposes only**.
+
+Please do **not** copy, redistribute, or submit this work as your own academic project.
+
+If you wish to reference or build upon this project, please provide appropriate attribution to the original authors.
+
+© 2026 Growza Team. All Rights Reserved.
