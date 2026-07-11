@@ -162,32 +162,6 @@ Additionally, I contributed to designing the recommendation strategy for the **H
 
 ![Portfolio Builder](docs/images/portfolio_builder.jpeg)
 
----
-
-# 📂 Project Structure
-
-```text
-backend/
-│
-├── app/
-├── routers/
-├── services/
-├── models/
-├── schemas/
-├── database/
-├── utils/
-├── ai/
-└── main.py
-
-frontend/
-
-docs/
-└── images/
-
-README.md
-```
-
----
 
 # 👥 Team
 
