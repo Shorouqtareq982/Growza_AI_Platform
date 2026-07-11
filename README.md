@@ -136,27 +136,27 @@ Additionally, I contributed to designing the recommendation strategy for the **H
 
 ## 🏠 Home
 
-![Home](docs/images/home.png)
+![Home](docs/images/home.jpeg)
 
 ## 🤖 Career Builder
 
-![Career Builder](docs/images/career_builder.png)
+![Career Builder](docs/images/career_builder.jpeg)
 
 ## 📄 CV Analyzer
 
-![CV Analyzer](docs/images/cv_analyzer.png)
+![CV Analyzer](docs/images/cv_analyzer.jpeg)
 
 ## 💼 Job Matching
 
-![Job Matching](docs/images/job_matching.png)
+![Job Matching](docs/images/job_matching.jpeg)
 
 ## 🎤 AI Mock Interview
 
-![Mock Interview](docs/images/mock_interview.png)
+![Mock Interview](docs/images/mock_interview.jpeg)
 
 ## 📊 Market Insights
 
-![Market Insights](docs/images/market_insights.png)
+![Market Insights](docs/images/market_insights.jpeg)
 
 ## 🌐 AI Portfolio Builder
 
