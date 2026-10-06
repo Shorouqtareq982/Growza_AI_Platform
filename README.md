@@ -28,6 +28,7 @@ The platform combines multiple AI-powered services into one ecosystem, helping u
 - CV parsing
 - Technical skill extraction
 - ATS optimization
+- PII-Masking
 - Skill proficiency estimation
 
 ## 💼 Hybrid Job Matching
@@ -136,31 +137,31 @@ Additionally, I contributed to designing the recommendation strategy for the **H
 
 ## 🏠 Home
 
-![Home](docs/images/home.jpeg)
+<img src="docs/images/home.jpeg" alt="Home" width="400" hight="500"/>
 
 ## 🤖 Career Builder
 
-![Career Builder](docs/images/career_builder.jpeg)
+<img src="docs/images/career_builder.jpeg" alt="Career Builder" width="400" hight="500"/>
 
 ## 📄 CV Analyzer
 
-![CV Analyzer](docs/images/cv_analyzer.jpeg)
+<img src="docs/images/cv_analyzer.jpeg" alt="CV Analyzer" width="400" hight="500"/>
 
 ## 💼 Job Matching
 
-![Job Matching](docs/images/job_matching.jpeg)
+<img src="docs/images/job_matching.jpeg" alt="Job Matching" width="400" hight="500"/>
 
 ## 🎤 AI Mock Interview
 
-![Mock Interview](docs/images/mock_interview.jpeg)
+<img src="docs/images/mock_interview.jpeg" alt="Mock Interview" width="400" hight="500"/>
 
 ## 📊 Market Insights
 
-![Market Insights](docs/images/market_insights.jpeg)
+<img src="docs/images/market_insights.jpeg" alt="Market Insights" width="400" hight="500"/>
 
 ## 🌐 AI Portfolio Builder
 
-![Portfolio Builder](docs/images/portfolio_builder.jpeg)
+<img src="docs/images/portfolio_builder.jpeg" alt="Portfolio Builder" width="400" hight="500"/>
 
 
 # 👥 Team
